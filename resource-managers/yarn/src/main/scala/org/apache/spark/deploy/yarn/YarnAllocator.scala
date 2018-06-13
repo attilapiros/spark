@@ -185,9 +185,8 @@ private[yarn] class YarnAllocator(
    * @param localityAwareTasks number of locality aware tasks to be used as container placement hint
    * @param hostToLocalTaskCount a map of preferred hostname to possible task counts to be used as
    *                             container placement hint.
-   * @param nodeBlacklist blacklisted nodes with expiry times, which is passed in to avoid
-   *                      allocating new containers on them. It will be used to update
-   *                      the application master's blacklist.
+   * @param nodeBlacklist blacklisted nodes, which is passed in to avoid allocating new containers
+   *                      on them. It will be used to update the application master's blacklist.
    * @return Whether the new requested total is different than the old value.
    */
   def requestTotalExecutorsWithPreferredLocalities(

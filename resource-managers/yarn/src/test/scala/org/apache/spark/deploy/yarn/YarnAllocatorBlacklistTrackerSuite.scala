@@ -116,7 +116,7 @@ class YarnAllocatorBlacklistTrackerSuite extends SparkFunSuite with Matchers
       .updateBlacklist(Arrays.asList("host4"), Arrays.asList("host2"))
   }
 
-  test("indicate if all available nodes are blacklisted") {
+  test("blacklist all available nodes") {
     yarnBlacklistTracker.setSchedulerBlacklistedNodes(Set("host1", "host2", "host3"))
     verify(amClientMock)
       .updateBlacklist(Arrays.asList("host1", "host2", "host3"), Collections.emptyList())
