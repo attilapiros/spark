@@ -90,7 +90,6 @@ class YarnAllocatorBlacklistTrackerSuite extends SparkFunSuite with Matchers
     verify(amClientMock).updateBlacklist(Collections.emptyList(), Collections.emptyList())
   }
 
-
   test("combining scheduler and allocation blacklist") {
     (1 to MAX_FAILED_EXEC_PER_NODE_VALUE).foreach {
       _ => {
@@ -117,7 +116,7 @@ class YarnAllocatorBlacklistTrackerSuite extends SparkFunSuite with Matchers
       .updateBlacklist(Arrays.asList("host4"), Arrays.asList("host2"))
   }
 
-  test("if blacklist size limit is exceeded, prefer to blacklist nodes with the latest expiry") {
+  test("indicate if all available nodes are blacklisted") {
     yarnBlacklistTracker.setSchedulerBlacklistedNodes(
       Map("host1" -> 150, "host2" -> 110, "host3" -> 200))
     verify(amClientMock)
@@ -136,25 +135,7 @@ class YarnAllocatorBlacklistTrackerSuite extends SparkFunSuite with Matchers
     // the third failure on the host triggers the blacklisting
     yarnBlacklistTracker.handleResourceAllocationFailure(Some("host4"))
 
-    // the blacklistSizeLimit is 3 as numClusterNodes is 4 and BLACKLIST_SIZE_DEFAULT_WEIGHT is 0.75
-    // this is why the 3 late expired nodes are chosen from the four nodes of
-    // "host1" -> 150, "host2" -> 110, "host3" -> 200, "host4" -> 160.
-    // So "host2" is removed from the previous state and "host4" is added
-    verify(amClientMock).updateBlacklist(Arrays.asList("host4"), Arrays.asList("host2"))
-
-    clock.advance(10L)
-    (1 to MAX_FAILED_EXEC_PER_NODE_VALUE).foreach {
-      _ => {
-        yarnBlacklistTracker.handleResourceAllocationFailure(Some("host5"))
-        verify(amClientMock, never())
-          .updateBlacklist(Arrays.asList("host5"), Collections.emptyList())
-      }
-    }
-
-    // the third failure on the host triggers the blacklisting
-    yarnBlacklistTracker.handleResourceAllocationFailure(Some("host5"))
-    // "host1" -> 150, "host2" -> 110, "host3" -> 200, "host4" -> 160, host4 -> 170
-    verify(amClientMock).updateBlacklist(Arrays.asList("host5"), Arrays.asList("host1"))
+    verify(amClientMock).updateBlacklist(Arrays.asList("host4"), Collections.emptyList())
+    assert(yarnBlacklistTracker.isAllNodeBlacklisted === true)
   }
-
 }
