@@ -72,12 +72,12 @@ class YarnAllocatorBlacklistTrackerSuite extends SparkFunSuite with Matchers
     clock.advance(BLACKLIST_TIMEOUT)
 
     // trigger synchronisation of blacklisted nodes with YARN
-    yarnBlacklistTracker.setSchedulerBlacklistedNodes(Map())
+    yarnBlacklistTracker.setSchedulerBlacklistedNodes(Set())
     verify(amClientMock).updateBlacklist(Collections.emptyList(), Arrays.asList("host"))
   }
 
   test("not handling the expiry of scheduler blacklisted nodes") {
-    yarnBlacklistTracker.setSchedulerBlacklistedNodes(Map("host1" -> 100, "host2" -> 150))
+    yarnBlacklistTracker.setSchedulerBlacklistedNodes(Set("host1", "host2"))
     verify(amClientMock)
       .updateBlacklist(Arrays.asList("host1", "host2"), Collections.emptyList())
 
@@ -85,7 +85,7 @@ class YarnAllocatorBlacklistTrackerSuite extends SparkFunSuite with Matchers
     clock.advance(200L)
 
     // expired blacklisted nodes (simulating a resource request)
-    yarnBlacklistTracker.setSchedulerBlacklistedNodes(Map("host1" -> 100, "host2" -> 150))
+    yarnBlacklistTracker.setSchedulerBlacklistedNodes(Set("host1", "host2"))
     // no change is communicated to YARN regarding the blacklisting
     verify(amClientMock).updateBlacklist(Collections.emptyList(), Collections.emptyList())
   }
@@ -105,20 +105,19 @@ class YarnAllocatorBlacklistTrackerSuite extends SparkFunSuite with Matchers
     verify(amClientMock)
       .updateBlacklist(Arrays.asList("host1"), Collections.emptyList())
 
-    yarnBlacklistTracker.setSchedulerBlacklistedNodes(Map("host2" -> 100, "host3" -> 150))
+    yarnBlacklistTracker.setSchedulerBlacklistedNodes(Set("host2", "host3"))
     verify(amClientMock)
       .updateBlacklist(Arrays.asList("host2", "host3"), Collections.emptyList())
 
     clock.advance(10L)
 
-    yarnBlacklistTracker.setSchedulerBlacklistedNodes(Map("host3" -> 100, "host4" -> 200))
+    yarnBlacklistTracker.setSchedulerBlacklistedNodes(Set("host3", "host4"))
     verify(amClientMock)
       .updateBlacklist(Arrays.asList("host4"), Arrays.asList("host2"))
   }
 
   test("indicate if all available nodes are blacklisted") {
-    yarnBlacklistTracker.setSchedulerBlacklistedNodes(
-      Map("host1" -> 150, "host2" -> 110, "host3" -> 200))
+    yarnBlacklistTracker.setSchedulerBlacklistedNodes(Set("host1", "host2", "host3"))
     verify(amClientMock)
       .updateBlacklist(Arrays.asList("host1", "host2", "host3"), Collections.emptyList())
 
