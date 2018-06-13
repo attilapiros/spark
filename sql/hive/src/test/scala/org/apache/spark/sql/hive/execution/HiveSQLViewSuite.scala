@@ -17,11 +17,18 @@
 
 package org.apache.spark.sql.hive.execution
 
+import java.io.File
+import java.net.URL
+
+import org.apache.spark.SparkException
+
 import org.apache.spark.sql.{AnalysisException, Row, SaveMode, SparkSession}
 import org.apache.spark.sql.catalyst.TableIdentifier
 import org.apache.spark.sql.catalyst.catalog.{CatalogStorageFormat, CatalogTable, CatalogTableType}
 import org.apache.spark.sql.execution.SQLViewSuite
+import org.apache.spark.sql.execution.datasources.CatalogFileIndex
 import org.apache.spark.sql.hive.test.{TestHive, TestHiveSingleton}
+import org.apache.spark.sql.internal.SQLConf
 import org.apache.spark.sql.types.StructType
 
 /**
@@ -96,6 +103,46 @@ class HiveSQLViewSuite extends SQLViewSuite with TestHiveSingleton {
         checkAnswer(
           sql("select * from t_part"),
           sql("select * from v_part"))
+      }
+    }
+  }
+
+  test("SPARK-19526 - query on hive view where parquet file is not readable (ignore)") {
+    withSQLConf(SQLConf.IGNORE_MISSING_FILES.key -> "true") {
+      withTable("t_part") {
+        withView("v_part") {
+          spark.sql("create table t_part stored as parquet as select 1 as a, 2 as b")
+          spark.sql("create view v_part as select * from t_part")
+
+          val tableMeta = spark.sharedState.externalCatalog.getTable("default", "t_part")
+          val catalogFileIndex = new CatalogFileIndex(spark, tableMeta, 0)
+          catalogFileIndex.inputFiles.foreach(file =>
+            new File(new URL(file).getFile).setReadable(false))
+
+          checkAnswer(
+            Seq.empty[(Int, Int)].toDF,
+            sql("select * from v_part"))
+        }
+      }
+    }
+  }
+
+  test("SPARK-19526 - query on hive view where parquet file is not readable (do not ignore)") {
+    withSQLConf(SQLConf.IGNORE_MISSING_FILES.key -> "false") {
+      withTable("t_part") {
+        withView("v_part") {
+          spark.sql("create table t_part stored as parquet as select 1 as a, 2 as b")
+          spark.sql("create view v_part as select * from t_part")
+
+          val tableMeta = spark.sharedState.externalCatalog.getTable("default", "t_part")
+          val catalogFileIndex = new CatalogFileIndex(spark, tableMeta, 0)
+          catalogFileIndex.inputFiles.foreach(file =>
+            new File(new URL(file).getFile).setReadable(false))
+          val exception = intercept[SparkException] {
+            sql("select * from v_part").collect()
+          }
+          assert(exception.getMessage.contains("Permission denied"))
+        }
       }
     }
   }
