@@ -56,7 +56,8 @@ class StreamTestHelper {
     smallBuffer = createBuffer(100);
     largeBuffer = createBuffer(100000);
 
-    testFile = File.createTempFile("stream-test-file", "txt", tempDir);
+    testFile = new File("/Users/attilapiros/github/nettyHugeFileSending/fileserver/big.zip");
+    /*
     FileOutputStream fp = new FileOutputStream(testFile);
     try {
       Random rnd = new Random();
@@ -68,6 +69,7 @@ class StreamTestHelper {
     } finally {
       fp.close();
     }
+    */
   }
 
   public ByteBuffer srcBuffer(String name) {

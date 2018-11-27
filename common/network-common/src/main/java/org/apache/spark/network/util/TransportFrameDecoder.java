@@ -22,6 +22,7 @@ import java.util.LinkedList;
 import com.google.common.base.Preconditions;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.CompositeByteBuf;
+import io.netty.buffer.PooledByteBufAllocator;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
@@ -62,6 +63,7 @@ public class TransportFrameDecoder extends ChannelInboundHandlerAdapter {
     buffers.add(in);
     totalSize += in.readableBytes();
 
+    System.out.println(((PooledByteBufAllocator)ctx.alloc()).metric());
     while (!buffers.isEmpty()) {
       // First, feed the interceptor, and if it's still, active, try again.
       if (interceptor != null) {

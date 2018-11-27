@@ -84,7 +84,7 @@ public class TransportClientFactory implements Closeable {
 
   private final Class<? extends Channel> socketChannelClass;
   private EventLoopGroup workerGroup;
-  private PooledByteBufAllocator pooledAllocator;
+  public PooledByteBufAllocator pooledAllocator;
   private final NettyMemoryMetrics metrics;
 
   public TransportClientFactory(
