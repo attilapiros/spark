@@ -393,11 +393,13 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: Rp
     }
   }
 
-  val driverEndpoint = rpcEnv.setupEndpoint(ENDPOINT_NAME, createDriverEndpoint())
+  private var _driverEndpoint: RpcEndpointRef = _
+  def driverEndpoint: RpcEndpointRef = _driverEndpoint
 
   protected def minRegisteredRatio: Double = _minRegisteredRatio
 
   override def start() {
+    _driverEndpoint = rpcEnv.setupEndpoint(ENDPOINT_NAME, createDriverEndpoint())
     if (UserGroupInformation.isSecurityEnabled()) {
       delegationTokenManager = createTokenManager()
       delegationTokenManager.foreach { dtm =>

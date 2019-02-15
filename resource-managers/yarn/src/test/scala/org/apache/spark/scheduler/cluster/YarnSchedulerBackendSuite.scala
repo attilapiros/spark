@@ -17,7 +17,6 @@
 package org.apache.spark.scheduler.cluster
 
 import java.net.URL
-import java.util.concurrent.atomic.AtomicReference
 import javax.servlet.http.{HttpServlet, HttpServletRequest, HttpServletResponse}
 
 import scala.language.reflectiveCalls
@@ -35,15 +34,8 @@ class YarnSchedulerBackendSuite extends SparkFunSuite with MockitoSugar with Loc
 
   test("RequestExecutors reflects node blacklist and is serializable") {
     sc = new SparkContext("local", "YarnSchedulerBackendSuite")
-    // Subclassing the TaskSchedulerImpl here instead of using Mockito. For details see SPARK-26891.
-    val sched = new TaskSchedulerImpl(sc) {
-      val blacklistedNodes = new AtomicReference[Set[String]]()
-
-      def setNodeBlacklist(nodeBlacklist: Set[String]): Unit = blacklistedNodes.set(nodeBlacklist)
-
-      override def nodeBlacklist(): Set[String] = blacklistedNodes.get()
-    }
-
+    val sched = mock[TaskSchedulerImpl]
+    when(sched.sc).thenReturn(sc)
     val yarnSchedulerBackend = new YarnSchedulerBackend(sched, sc) {
       def setHostToLocalTaskCount(hostToLocalTaskCount: Map[String, Int]): Unit = {
         this.hostToLocalTaskCount = hostToLocalTaskCount
@@ -59,7 +51,7 @@ class YarnSchedulerBackendSuite extends SparkFunSuite with MockitoSugar with Loc
       )
     } {
       yarnSchedulerBackend.setHostToLocalTaskCount(hostToLocalCount)
-      sched.setNodeBlacklist(blacklist)
+      when(sched.nodeBlacklist()).thenReturn(blacklist)
       val req = yarnSchedulerBackend.prepareRequestExecutors(numRequested)
       assert(req.requestedTotal === numRequested)
       assert(req.nodeBlacklist === blacklist)
