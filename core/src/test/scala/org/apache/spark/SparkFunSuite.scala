@@ -20,6 +20,7 @@ package org.apache.spark
 // scalastyle:off
 import java.io.File
 
+import com.attila.memorydiaghelper.HeapDump
 import org.scalatest.{BeforeAndAfterAll, FunSuite, Outcome}
 
 import org.apache.spark.internal.Logging
@@ -77,6 +78,12 @@ abstract class SparkFunSuite
         doThreadPostAudit()
       }
     }
+    import SparkFunSuite.idx
+    idx = idx + 1
+    if (idx % 10 == 0) {
+      val suiteName = this.getClass.getName
+      HeapDump.dumpHeap(idx + "_" + suiteName + ".hprof", true)
+    }
   }
 
   // helper function
@@ -117,4 +124,8 @@ abstract class SparkFunSuite
       Utils.deleteRecursively(dir)
     }
   }
+}
+
+object SparkFunSuite {
+  var idx = 0
 }
