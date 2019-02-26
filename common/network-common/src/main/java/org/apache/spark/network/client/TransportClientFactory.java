@@ -38,6 +38,7 @@ import io.netty.channel.ChannelInitializer;
 import io.netty.channel.ChannelOption;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
+import org.apache.spark.network.Attila;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -86,6 +87,7 @@ public class TransportClientFactory implements Closeable {
   private EventLoopGroup workerGroup;
   private final PooledByteBufAllocator pooledAllocator;
   private final NettyMemoryMetrics metrics;
+  private Attila attila;
 
   public TransportClientFactory(
       TransportContext context,
@@ -112,6 +114,7 @@ public class TransportClientFactory implements Closeable {
     }
     this.metrics = new NettyMemoryMetrics(
       this.pooledAllocator, conf.getModuleName() + "-client", conf);
+    attila = new Attila();
   }
 
   public MetricSet getAllMetrics() {
@@ -294,5 +297,6 @@ public class TransportClientFactory implements Closeable {
       workerGroup.shutdownGracefully();
       workerGroup = null;
     }
+    attila = null;
   }
 }

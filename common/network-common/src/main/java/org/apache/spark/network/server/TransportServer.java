@@ -34,6 +34,7 @@ import io.netty.channel.ChannelOption;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
 import org.apache.commons.lang3.SystemUtils;
+import org.apache.spark.network.Attila;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -56,6 +57,7 @@ public class TransportServer implements Closeable {
   private int port = -1;
   private final PooledByteBufAllocator pooledAllocator;
   private NettyMemoryMetrics metrics;
+  private Attila attila;
 
   /**
    * Creates a TransportServer that binds to the given host and the given port, or to any available
@@ -88,6 +90,7 @@ public class TransportServer implements Closeable {
         JavaUtils.closeQuietly(this);
       }
     }
+    attila = new Attila();
   }
 
   public int getPort() {
@@ -168,6 +171,7 @@ public class TransportServer implements Closeable {
       bootstrap.config().childGroup().shutdownGracefully();
     }
     bootstrap = null;
+    attila = null;
   }
 
   public Counter getRegisteredConnections() {
