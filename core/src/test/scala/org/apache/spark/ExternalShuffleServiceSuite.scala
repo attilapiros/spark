@@ -24,6 +24,7 @@ import org.apache.spark.network.TransportContext
 import org.apache.spark.network.netty.SparkTransportConf
 import org.apache.spark.network.server.TransportServer
 import org.apache.spark.network.shuffle.{ExternalShuffleBlockHandler, ExternalShuffleClient}
+import org.apache.spark.util.Utils
 
 /**
  * This suite creates an external shuffle server and routes all shuffle fetches through it.
@@ -48,11 +49,13 @@ class ExternalShuffleServiceSuite extends ShuffleSuite with BeforeAndAfterAll {
   }
 
   override def afterAll() {
-    try {
+    Utils.tryLogNonFatalError{
       server.close()
-    } finally {
-      super.afterAll()
     }
+    Utils.tryLogNonFatalError{
+      rpcHandler.close()
+    }
+    super.afterAll()
   }
 
   // This test ensures that the external shuffle service is actually in use for the other tests.
