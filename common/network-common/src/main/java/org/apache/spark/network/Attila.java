@@ -1,5 +1,8 @@
 package org.apache.spark.network;
 
+import com.google.common.base.Throwables;
+
 public class Attila {
-  private int i = 12;
+  private String str = 
+    Throwables.getStackTraceAsString(new Exception("open TransportClientFactory"));
 }

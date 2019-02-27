@@ -71,6 +71,7 @@ public class ExternalShuffleBlockHandler extends RpcHandler {
   public ExternalShuffleBlockHandler(
       OneForOneStreamManager streamManager,
       ExternalShuffleBlockResolver blockManager) {
+    logger.info("Attila open");
     this.metrics = new ShuffleMetrics();
     this.streamManager = streamManager;
     this.blockManager = blockManager;
@@ -161,6 +162,7 @@ public class ExternalShuffleBlockHandler extends RpcHandler {
   }
 
   public void close() {
+    logger.info("Attila close");
     blockManager.close();
   }
 
