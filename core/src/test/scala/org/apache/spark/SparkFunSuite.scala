@@ -80,10 +80,8 @@ abstract class SparkFunSuite
     }
     import SparkFunSuite.idx
     idx = idx + 1
-    if (idx % 10 == 0) {
-      val suiteName = this.getClass.getName
-      HeapDump.dumpHeap(idx + "_" + suiteName + ".hprof", true)
-    }
+    val suiteName = this.getClass.getName
+    // HeapDump.dumpHeap(idx + "_" + suiteName + ".hprof", true)
   }
 
   // helper function
