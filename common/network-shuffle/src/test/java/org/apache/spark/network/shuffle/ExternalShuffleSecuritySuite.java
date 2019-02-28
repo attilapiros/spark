@@ -41,14 +41,15 @@ public class ExternalShuffleSecuritySuite {
 
   TransportConf conf = new TransportConf("shuffle", MapConfigProvider.EMPTY);
   TransportServer server;
+  TransportContext transportContext;
 
   @Before
   public void beforeEach() throws IOException {
-    TransportContext context =
+    transportContext =
       new TransportContext(conf, new ExternalShuffleBlockHandler(conf, null));
     TransportServerBootstrap bootstrap = new SaslServerBootstrap(conf,
         new TestSecretKeyHolder("my-app-id", "secret"));
-    this.server = context.createServer(Arrays.asList(bootstrap));
+    this.server = transportContext.createServer(Arrays.asList(bootstrap));
   }
 
   @After
@@ -56,6 +57,10 @@ public class ExternalShuffleSecuritySuite {
     if (server != null) {
       server.close();
       server = null;
+    }
+    if (transportContext != null) {
+      transportContext.close();
+      transportContext = null;
     }
   }
 

@@ -17,6 +17,7 @@
 
 package org.apache.spark.network;
 
+import java.io.Closeable;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -60,7 +61,7 @@ import org.apache.spark.network.util.TransportFrameDecoder;
  * channel. As each TransportChannelHandler contains a TransportClient, this enables server
  * processes to send messages back to the client on an existing channel.
  */
-public class TransportContext {
+public class TransportContext implements Closeable {
   private static final Logger logger = LoggerFactory.getLogger(TransportContext.class);
 
   private final TransportConf conf;
@@ -200,9 +201,7 @@ public class TransportContext {
         // would require more logic to guarantee if this were not part of the same event loop.
         .addLast("handler", channelHandler);
       // Use a separate EventLoopGroup to handle ChunkFetchRequest messages for shuffle rpcs.
-      if (conf.getModuleName() != null &&
-          conf.getModuleName().equalsIgnoreCase("shuffle")
-          && !isClientOnly) {
+      if (chunkFetchWorkers != null) {
         pipeline.addLast(chunkFetchWorkers, "chunkFetchHandler", chunkFetchHandler);
       }
       return channelHandler;
@@ -239,5 +238,11 @@ public class TransportContext {
 
   public Counter getRegisteredConnections() {
     return registeredConnections;
+  }
+
+  public void close() {
+    if (chunkFetchWorkers != null) {
+      chunkFetchWorkers.shutdownGracefully();
+    }
   }
 }
