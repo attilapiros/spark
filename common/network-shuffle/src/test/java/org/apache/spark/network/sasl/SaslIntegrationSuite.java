@@ -180,11 +180,12 @@ public class SaslIntegrationSuite {
     try (
       TransportContext blockServerContext = new TransportContext(conf, blockHandler);
       TransportServer blockServer = blockServerContext.createServer(Arrays.asList(bootstrap));
-      TransportClient client1 = clientFactory.createClient(
-          TestUtils.getLocalHost(), blockServer.getPort())) {
       // Create a client, and make a request to fetch blocks from a different app.
-      clientFactory = blockServerContext.createClientFactory(
+      TransportClientFactory clientFactory1 = blockServerContext.createClientFactory(
           Arrays.asList(new SaslClientBootstrap(conf, "app-1", secretKeyHolder)));
+      TransportClient client1 = clientFactory1.createClient(
+          TestUtils.getLocalHost(), blockServer.getPort())) {
+
       AtomicReference<Throwable> exception = new AtomicReference<>();
 
       CountDownLatch blockFetchLatch = new CountDownLatch(1);
