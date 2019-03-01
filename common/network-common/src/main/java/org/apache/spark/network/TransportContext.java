@@ -67,7 +67,6 @@ public class TransportContext implements Closeable {
   private final TransportConf conf;
   private final RpcHandler rpcHandler;
   private final boolean closeIdleConnections;
-  private final boolean isClientOnly;
   // Number of registered connections to the shuffle service
   private Counter registeredConnections = new Counter();
 
@@ -121,7 +120,6 @@ public class TransportContext implements Closeable {
     this.conf = conf;
     this.rpcHandler = rpcHandler;
     this.closeIdleConnections = closeIdleConnections;
-    this.isClientOnly = isClientOnly;
 
     if (conf.getModuleName() != null &&
         conf.getModuleName().equalsIgnoreCase("shuffle") &&

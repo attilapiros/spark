@@ -180,12 +180,11 @@ public class SaslIntegrationSuite {
     try (
       TransportContext blockServerContext = new TransportContext(conf, blockHandler);
       TransportServer blockServer = blockServerContext.createServer(Arrays.asList(bootstrap));
-        // Create a client, and make a request to fetch blocks from a different app.
-      TransportClientFactory clientFactory = blockServerContext.createClientFactory(
+      TransportClient client1 = clientFactory.createClient(
+          TestUtils.getLocalHost(), blockServer.getPort())) {
+      // Create a client, and make a request to fetch blocks from a different app.
+      clientFactory = blockServerContext.createClientFactory(
           Arrays.asList(new SaslClientBootstrap(conf, "app-1", secretKeyHolder)));
-      TransportClient client1 = clientFactory.createClient(TestUtils.getLocalHost(),
-        blockServer.getPort())) {
-
       AtomicReference<Throwable> exception = new AtomicReference<>();
 
       CountDownLatch blockFetchLatch = new CountDownLatch(1);
@@ -227,8 +226,8 @@ public class SaslIntegrationSuite {
       // the stream created for the previous app.
       TransportClientFactory clientFactory2 = blockServerContext.createClientFactory(
           Arrays.asList(new SaslClientBootstrap(conf, "app-2", secretKeyHolder)));
-      TransportClient client2 = clientFactory2.createClient(TestUtils.getLocalHost(),
-        blockServer.getPort())) {
+      TransportClient client2 = clientFactory2.createClient(
+          TestUtils.getLocalHost(), blockServer.getPort())) {
 
         CountDownLatch chunkReceivedLatch = new CountDownLatch(1);
         ChunkReceivedCallback callback = new ChunkReceivedCallback() {
