@@ -242,7 +242,11 @@ public class TransportContext implements Closeable {
 
   public void close() {
     if (chunkFetchWorkers != null) {
-      chunkFetchWorkers.shutdownGracefully();
+      try {
+        chunkFetchWorkers.shutdownGracefully().await();
+      } catch (InterruptedException e) {
+        e.printStackTrace();
+      }
     }
   }
 }
