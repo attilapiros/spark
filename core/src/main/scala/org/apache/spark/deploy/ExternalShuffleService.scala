@@ -51,7 +51,8 @@ class ExternalShuffleService(sparkConf: SparkConf, securityManager: SecurityMana
   private val transportConf =
     SparkTransportConf.fromSparkConf(sparkConf, "shuffle", numUsableCores = 0)
   private val blockHandler = newShuffleBlockHandler(transportConf)
-  private var transportContext: TransportContext = _
+  private val transportContext: TransportContext =
+    new TransportContext(transportConf, blockHandler, true)
 
   private var server: TransportServer = _
 
@@ -72,7 +73,6 @@ class ExternalShuffleService(sparkConf: SparkConf, securityManager: SecurityMana
   /** Start the external shuffle service */
   def start() {
     require(server == null, "Shuffle server already started")
-    transportContext = new TransportContext(transportConf, blockHandler, true)
     val authEnabled = securityManager.isAuthenticationEnabled()
     logInfo(s"Starting shuffle service on port $port (auth enabled = $authEnabled)")
     val bootstraps: Seq[TransportServerBootstrap] =
@@ -108,7 +108,6 @@ class ExternalShuffleService(sparkConf: SparkConf, securityManager: SecurityMana
     }
     if (transportContext != null) {
       transportContext.close()
-      transportContext = null
     }
   }
 }
