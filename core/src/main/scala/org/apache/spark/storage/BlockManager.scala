@@ -846,7 +846,7 @@ private[spark] class BlockManager(
    *
    * This does not acquire a lock on this block in this JVM.
    */
-  private def getRemoteValues[T: ClassTag](blockId: BlockId): Option[BlockResult] = {
+  private[spark] def getRemoteValues[T: ClassTag](blockId: BlockId): Option[BlockResult] = {
     val ct = implicitly[ClassTag[T]]
     getRemoteManagedBuffer(blockId).map { data =>
       val values =

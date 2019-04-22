@@ -24,6 +24,7 @@ import org.apache.spark.network.TransportContext
 import org.apache.spark.network.netty.SparkTransportConf
 import org.apache.spark.network.server.TransportServer
 import org.apache.spark.network.shuffle.{ExternalShuffleBlockHandler, ExternalShuffleClient}
+import org.apache.spark.storage.{RDDBlockId, StorageLevel}
 import org.apache.spark.util.Utils
 
 /**
@@ -91,5 +92,35 @@ class ExternalShuffleServiceSuite extends ShuffleSuite with BeforeAndAfterAll {
       rdd.count()
     }
     e.getMessage should include ("Fetch failure will not retry stage due to testing config")
+  }
+
+  test("using external shuffle service fetching disk persisted blocks") {
+    sc = new SparkContext("local-cluster[2,1,1024]", "test", conf)
+    sc.env.blockManager.externalShuffleServiceEnabled should equal(true)
+    sc.env.blockManager.shuffleClient.getClass should equal(classOf[ExternalShuffleClient])
+
+    // In a slow machine, one slave may register hundreds of milliseconds ahead of the other one.
+    // If we don't wait for all slaves, it's possible that only one executor runs all jobs. Then
+    // all shuffle blocks will be in this executor, ShuffleBlockFetcherIterator will directly fetch
+    // local blocks from the local BlockManager and won't send requests to ExternalShuffleService.
+    // In this case, we won't receive FetchFailed. And it will make this test fail.
+    // Therefore, we should wait until all slaves are up
+    TestUtils.waitUntilExecutorsUp(sc, 2, 60000)
+
+    val rdd = sc.parallelize(0 until 1000, 10)
+      .map(i => (i, 1))
+      .persist(StorageLevel.DISK_ONLY)
+
+    rdd.count()
+    val execId = sc.getExecutorIds().head
+    // sc.killExecutors(sc.getExecutorIds())
+    // sc.env.blockManager.getRemoteValues(RDDBlockId(0, 0))
+
+    val rddSplit0 = rpcHandler.getBlockResolver.getBlockData(sc.conf.getAppId, execId, rdd.id, 0)
+    assert(rddSplit0 !== null)
+
+    // Invalidate the registered executors, disallowing access to their shuffle blocks (without
+    // deleting the actual shuffle files, so we could access them without the shuffle service).
+    rpcHandler.applicationRemoved(sc.conf.getAppId, false /* cleanupLocalDirs */)
   }
 }
