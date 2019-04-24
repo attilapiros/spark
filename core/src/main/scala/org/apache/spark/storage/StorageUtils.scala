@@ -23,10 +23,10 @@ import scala.collection.Map
 import scala.collection.mutable
 
 import org.apache.commons.lang3.{JavaVersion, SystemUtils}
-import org.apache.spark.SparkConf
 import sun.misc.Unsafe
 import sun.nio.ch.DirectBuffer
 
+import org.apache.spark.SparkConf
 import org.apache.spark.internal.{config, Logging}
 import org.apache.spark.util.Utils
 
