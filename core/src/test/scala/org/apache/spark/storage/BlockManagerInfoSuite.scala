@@ -33,7 +33,7 @@ class BlockManagerInfoSuite extends SparkFunSuite {
   }
 
   def testBlockManagerInfo(shuffleServiceEnabled: Boolean): Unit =
-    test(s"BlockManagerInfo with externalShuffleServiceEnabled=$shuffleServiceEnabled") {
+    test(s"test BlockManagerInfo with externalShuffleServiceEnabled=$shuffleServiceEnabled") {
       val blockManagerInfo = new BlockManagerInfo(
         blockManagerId = BlockManagerId("executor0", "host", 1234, None),
         timeMs = 300,
