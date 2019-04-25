@@ -40,6 +40,7 @@ class BlockManagerInfoSuite extends SparkFunSuite {
         maxOnHeapMem = 10000,
         maxOffHeapMem = 20000,
         slaveEndpoint = null,
+        if (shuffleServiceEnabled) new JHashMap[BlockId, BlockStatus]() else null,
         externalShuffleServiceEnabled = shuffleServiceEnabled)
 
       assert(blockManagerInfo.blocks.isEmpty)

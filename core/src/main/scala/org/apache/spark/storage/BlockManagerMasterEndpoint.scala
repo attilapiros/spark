@@ -47,6 +47,8 @@ class BlockManagerMasterEndpoint(
 
   // Mapping from block manager id to the block manager's information.
   private val blockManagerInfo = new mutable.HashMap[BlockManagerId, BlockManagerInfo]
+  private val blockStatusForExtShuffleService =
+    new mutable.HashMap[BlockManagerId, JHashMap[BlockId, BlockStatus]]
 
   // Mapping from executor ID to block manager ID.
   private val blockManagerIdByExecutor = new mutable.HashMap[String, BlockManagerId]
@@ -352,6 +354,10 @@ class BlockManagerMasterEndpoint(
     ).map(_.flatten.toSeq)
   }
 
+  private def externalShuffleServiceIdOnHost(blockManagerId: BlockManagerId): BlockManagerId = {
+    BlockManagerId(blockManagerId.executorId, blockManagerId.host, externalShuffleServicePort)
+  }
+
   /**
    * Returns the BlockManagerId with topology information populated, if available.
    */
@@ -383,8 +389,23 @@ class BlockManagerMasterEndpoint(
 
       blockManagerIdByExecutor(id.executorId) = id
 
-      blockManagerInfo(id) = new BlockManagerInfo(id, System.currentTimeMillis(), maxOnHeapMemSize,
-        maxOffHeapMemSize, slaveEndpoint, externalShuffleServiceEnabled)
+      var externalShuffleServiceBlocks: JHashMap[BlockId, BlockStatus] = null
+      if (externalShuffleServiceEnabled) {
+        val externalShuffleServiceId = externalShuffleServiceIdOnHost(id)
+        externalShuffleServiceBlocks =
+          blockStatusForExtShuffleService
+            .getOrElseUpdate(externalShuffleServiceId, new JHashMap[BlockId, BlockStatus]())
+      }
+
+      blockManagerInfo(id) =
+        new BlockManagerInfo(
+          id,
+          System.currentTimeMillis(),
+          maxOnHeapMemSize,
+          maxOffHeapMemSize,
+          slaveEndpoint,
+          externalShuffleServiceBlocks,
+          externalShuffleServiceEnabled)
     }
     listenerBus.post(SparkListenerBlockManagerAdded(time, id, maxOnHeapMemSize + maxOffHeapMemSize,
         Some(maxOnHeapMemSize), Some(maxOffHeapMemSize)))
@@ -425,12 +446,17 @@ class BlockManagerMasterEndpoint(
 
     if (storageLevel.isValid) {
       locations.add(blockManagerId)
-      if (storageLevel.useDisk && externalShuffleServiceEnabled) {
-        locations.add(BlockManagerId(blockManagerId.executorId, blockManagerId.host,
-            externalShuffleServicePort))
-      }
     } else {
       locations.remove(blockManagerId)
+    }
+
+    if (storageLevel.useDisk && externalShuffleServiceEnabled) {
+      val externalShuffleServiceId = externalShuffleServiceIdOnHost(blockManagerId)
+      if (storageLevel.isValid) {
+        locations.add(externalShuffleServiceId)
+      } else {
+        locations.remove(externalShuffleServiceId)
+      }
     }
 
     // Remove the block from master tracking if it has been removed on all slaves.
@@ -446,7 +472,13 @@ class BlockManagerMasterEndpoint(
 
   private def getLocationsAndStatus(blockId: BlockId): Option[BlockLocationsAndStatus] = {
     val locations = Option(blockLocations.get(blockId)).map(_.toSeq).getOrElse(Seq.empty)
-    val status = locations.headOption.flatMap { bmId => blockManagerInfo(bmId).getStatus(blockId) }
+    val status = locations.headOption.flatMap { bmId =>
+      if (externalShuffleServiceEnabled && bmId.port == externalShuffleServicePort) {
+        Option(blockStatusForExtShuffleService(bmId).get(blockId))
+      } else {
+        blockManagerInfo(bmId).getStatus(blockId)
+      }
+    }
 
     if (locations.nonEmpty && status.isDefined) {
       Some(BlockLocationsAndStatus(locations, status.get))
@@ -503,6 +535,7 @@ private[spark] class BlockManagerInfo(
     val maxOnHeapMem: Long,
     val maxOffHeapMem: Long,
     val slaveEndpoint: RpcEndpointRef,
+    val externalShuffleServiceBlocks: JHashMap[BlockId, BlockStatus],
     val externalShuffleServiceEnabled: Boolean)
   extends Logging {
 
@@ -586,17 +619,24 @@ private[spark] class BlockManagerInfo(
             s" (size: ${Utils.bytesToString(diskSize)})")
         }
       }
+
       if (!blockId.isBroadcast &&
         (blockStatus.memSize > 0 || (!externalShuffleServiceEnabled && blockStatus.diskSize > 0))) {
         _exclusiveCachedBlocks += blockId
       } else if (blockExists) {
-        // removing block when updated to non-exclusive
+        // removing block from the exclusive cached blocks set when updated to non-exclusive
         _exclusiveCachedBlocks -= blockId
+      }
+      if (externalShuffleServiceEnabled && !blockId.isBroadcast && blockStatus.diskSize > 0) {
+        externalShuffleServiceBlocks.put(blockId, blockStatus)
       }
     } else if (blockExists) {
       // If isValid is not true, drop the block.
       _blocks.remove(blockId)
       _exclusiveCachedBlocks -= blockId
+      if (externalShuffleServiceEnabled) {
+        externalShuffleServiceBlocks.remove(blockId)
+      }
       if (originalLevel.useMemory) {
         logInfo(s"Removed $blockId on ${blockManagerId.hostPort} in memory" +
           s" (size: ${Utils.bytesToString(originalMemSize)}," +
