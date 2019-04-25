@@ -18,6 +18,8 @@
 package org.apache.spark
 
 import org.scalatest.BeforeAndAfterAll
+import org.scalatest.concurrent.Eventually
+import org.scalatest.time.SpanSugar._
 
 import org.apache.spark.internal.config
 import org.apache.spark.network.TransportContext
@@ -33,7 +35,7 @@ import org.apache.spark.util.Utils
  * set up in `ExternalShuffleBlockHandler`, such as changing the format of shuffle files or how
  * we hash files into folders.
  */
-class ExternalShuffleServiceSuite extends ShuffleSuite with BeforeAndAfterAll {
+class ExternalShuffleServiceSuite extends ShuffleSuite with BeforeAndAfterAll with Eventually {
   var server: TransportServer = _
   var transportContext: TransportContext = _
   var rpcHandler: ExternalShuffleBlockHandler = _
@@ -112,12 +114,26 @@ class ExternalShuffleServiceSuite extends ShuffleSuite with BeforeAndAfterAll {
       .persist(StorageLevel.DISK_ONLY)
 
     rdd.count()
-    val execId = sc.getExecutorIds().head
-    // sc.killExecutors(sc.getExecutorIds())
-    // sc.env.blockManager.getRemoteValues(RDDBlockId(0, 0))
 
-    val rddSplit0 = rpcHandler.getBlockResolver.getBlockData(sc.conf.getAppId, execId, rdd.id, 0)
-    assert(rddSplit0 !== null)
+    val blockId = RDDBlockId(rdd.id, 0)
+    eventually(timeout(2.seconds), interval(100.milliseconds)) {
+      val locations = sc.env.blockManager.master.getLocations(blockId)
+      assert(locations.size === 2)
+      assert(locations.map(_.port).contains(server.getPort),
+        "external shuffle service port should be contained")
+    }
+
+    sc.killExecutors(sc.getExecutorIds())
+
+    eventually(timeout(2.seconds), interval(100.milliseconds)) {
+      val locations = sc.env.blockManager.master.getLocations(blockId)
+      assert(locations.size === 1)
+      assert(locations.map(_.port).contains(server.getPort),
+        "external shuffle service port should be contained")
+    }
+
+    val rddSplit0Block = sc.env.blockManager.getRemoteValues(blockId)
+    assert(rddSplit0Block.isDefined)
 
     // Invalidate the registered executors, disallowing access to their shuffle blocks (without
     // deleting the actual shuffle files, so we could access them without the shuffle service).
