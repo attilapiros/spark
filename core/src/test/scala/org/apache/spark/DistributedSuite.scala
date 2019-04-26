@@ -23,7 +23,7 @@ import org.scalatest.time.{Millis, Span}
 
 import org.apache.spark.internal.config
 import org.apache.spark.internal.config.Tests._
-import org.apache.spark.network.{BlockTransferClientSync, BlockTransferService}
+import org.apache.spark.network.BlockTransferClientSync
 import org.apache.spark.security.EncryptionFunSuite
 import org.apache.spark.storage.{RDDBlockId, StorageLevel}
 import org.apache.spark.util.io.ChunkedByteBuffer

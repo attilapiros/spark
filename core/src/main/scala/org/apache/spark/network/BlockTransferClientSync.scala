@@ -27,6 +27,7 @@ import org.apache.spark.storage.EncryptedManagedBuffer
 import org.apache.spark.util.ThreadUtils
 
 private[spark] class BlockTransferClientSync(val blockTransferClient: BlockTransferClient) {
+
   /**
    * A special case of fetchBlocks, as it fetches only one block and is blocking.
    *

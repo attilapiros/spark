@@ -17,6 +17,7 @@
  package org.apache.spark.network.shuffle;
 
 public interface BlockTransferClient {
+
   /**
    * Fetch a sequence of blocks from a remote node asynchronously,
    *
