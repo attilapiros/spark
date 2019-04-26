@@ -49,9 +49,9 @@ import org.apache.spark.network.util.TransportConf;
 /**
  * RPC Handler for a server which can serve shuffle blocks from outside of an Executor process.
  *
- * Handles registering executors and opening shuffle blocks from them. Shuffle blocks are registered
- * with the "one-for-one" strategy, meaning each Transport-layer Chunk is equivalent to one Spark-
- * level shuffle block.
+ * Handles registering executors and opening shuffle or disk persisted RDD blocks from them.
+ * Blocks are registered with the "one-for-one" strategy, meaning each Transport-layer Chunk
+ * is equivalent to one Spark-level shuffle block or to one RDD block.
  */
 public class ExternalShuffleBlockHandler extends RpcHandler {
   private static final Logger logger = LoggerFactory.getLogger(ExternalShuffleBlockHandler.class);
