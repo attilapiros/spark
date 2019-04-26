@@ -40,8 +40,7 @@ class BlockManagerInfoSuite extends SparkFunSuite {
         maxOnHeapMem = 10000,
         maxOffHeapMem = 20000,
         slaveEndpoint = null,
-        if (shuffleServiceEnabled) new JHashMap[BlockId, BlockStatus]() else null,
-        externalShuffleServiceEnabled = shuffleServiceEnabled)
+        if (shuffleServiceEnabled) Some(new JHashMap[BlockId, BlockStatus]) else None)
 
       assert(blockManagerInfo.blocks.isEmpty)
       assert(blockManagerInfo.exclusiveCachedBlocks.isEmpty)
@@ -68,6 +67,9 @@ class BlockManagerInfoSuite extends SparkFunSuite {
           rddId1 -> BlockStatus(StorageLevel.MEMORY_ONLY, 200, 0)))
       assert(blockManagerInfo.exclusiveCachedBlocks === Set(rddId1))
       assert(blockManagerInfo.remainingMem == 29800)
+      if (shuffleServiceEnabled) {
+        assertMap(blockManagerInfo.externalShuffleServiceBlockStatus.get, Map())
+      }
 
       // 3. add RDD block with DISK_ONLY
       val rddId2: BlockId = RDDBlockId(2, 0)
@@ -82,8 +84,14 @@ class BlockManagerInfoSuite extends SparkFunSuite {
 
       val exclusiveCachedBlocksForOneMemoryOnly =
         if (shuffleServiceEnabled) Set(rddId1) else Set(rddId1, rddId2)
+
       assert(blockManagerInfo.exclusiveCachedBlocks === exclusiveCachedBlocksForOneMemoryOnly)
       assert(blockManagerInfo.remainingMem == 29800)
+      if (shuffleServiceEnabled) {
+        assertMap(
+          blockManagerInfo.externalShuffleServiceBlockStatus.get,
+          Map(rddId2 -> BlockStatus(StorageLevel.DISK_ONLY, 0, 200)))
+      }
 
       // 4. update first RDD block to DISK_ONLY
       blockManagerInfo.updateBlockInfo(rddId1, StorageLevel.DISK_ONLY, memSize = 0, diskSize = 200)
@@ -97,8 +105,16 @@ class BlockManagerInfoSuite extends SparkFunSuite {
 
       val exclusiveCachedBlocksForNoMemoryOnly =
         if (shuffleServiceEnabled) Set() else Set(rddId1, rddId2)
+
       assert(blockManagerInfo.exclusiveCachedBlocks === exclusiveCachedBlocksForNoMemoryOnly)
       assert(blockManagerInfo.remainingMem == 30000)
+      if (shuffleServiceEnabled) {
+        assertMap(
+          blockManagerInfo.externalShuffleServiceBlockStatus.get,
+          Map(
+            rddId1 -> BlockStatus(StorageLevel.DISK_ONLY, 0, 200),
+            rddId2 -> BlockStatus(StorageLevel.DISK_ONLY, 0, 200)))
+      }
 
       // 5. using invalid StorageLevel
       blockManagerInfo.updateBlockInfo(rddId1, StorageLevel.NONE, memSize = 0, diskSize = 200)
@@ -108,11 +124,17 @@ class BlockManagerInfoSuite extends SparkFunSuite {
         Map(
           broadcastId1 -> BlockStatus(StorageLevel.MEMORY_AND_DISK, 0, 100),
           rddId2 -> BlockStatus(StorageLevel.DISK_ONLY, 0, 200)))
+
       val exclusiveCachedBlocksAfterInvalidation =
         if (shuffleServiceEnabled) Set() else Set(rddId2)
+
       assert(blockManagerInfo.exclusiveCachedBlocks === exclusiveCachedBlocksAfterInvalidation)
       assert(blockManagerInfo.remainingMem == 30000)
-
+      if (shuffleServiceEnabled) {
+        assertMap(
+          blockManagerInfo.externalShuffleServiceBlockStatus.get,
+          Map(rddId2 -> BlockStatus(StorageLevel.DISK_ONLY, 0, 200)))
+      }
       // 6. remove block
       blockManagerInfo.removeBlock(rddId2)
 
@@ -122,5 +144,8 @@ class BlockManagerInfoSuite extends SparkFunSuite {
           broadcastId1 -> BlockStatus(StorageLevel.MEMORY_AND_DISK, 0, 100)))
       assert(blockManagerInfo.exclusiveCachedBlocks === Set())
       assert(blockManagerInfo.remainingMem == 30000)
+      if (shuffleServiceEnabled) {
+        assertMap(blockManagerInfo.externalShuffleServiceBlockStatus.get, Map())
+      }
     }
 }

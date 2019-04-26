@@ -1514,8 +1514,12 @@ class BlockManagerSuite extends SparkFunSuite with Matchers with BeforeAndAfterE
     var numCalls = 0
     var tempFileManager: DownloadFileManager = null
 
-    override def fetchBlockSync(host: String, port: Int, execId: String, blockId: String,
-      tempFileManager: DownloadFileManager): ManagedBuffer = {
+    override def fetchBlockSync(
+        host: String,
+        port: Int,
+        execId: String,
+        blockId: String,
+        tempFileManager: DownloadFileManager): ManagedBuffer = {
       numCalls += 1
       this.tempFileManager = tempFileManager
       if (numCalls <= maxFailures) {
