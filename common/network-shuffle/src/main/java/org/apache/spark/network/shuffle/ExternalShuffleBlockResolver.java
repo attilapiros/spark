@@ -313,7 +313,7 @@ public class ExternalShuffleBlockResolver {
   public ManagedBuffer getDiskPersistedRddBlockData(
       ExecutorShuffleInfo executor, int rddId, int splitIndex) {
     File file = getFile(executor.localDirs, executor.subDirsPerLocalDir,
-        "rdd_" + rddId + "_" + splitIndex);
+      "rdd_" + rddId + "_" + splitIndex);
     return new FileSegmentManagedBuffer(conf, file, 0, file.length());
   }
 

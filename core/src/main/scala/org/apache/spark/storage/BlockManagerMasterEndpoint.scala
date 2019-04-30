@@ -393,18 +393,15 @@ class BlockManagerMasterEndpoint(
 
       val externalShuffleServiceBlockStatus =
         if (externalShuffleServiceEnabled) {
-          val externalShuffleServiceId = externalShuffleServiceIdOnHost(id)
-          val externalShuffleServiceBlocks =
-            blockStatusByShuffleService
-              .getOrElseUpdate(externalShuffleServiceId, new JHashMap[BlockId, BlockStatus]())
+          val externalShuffleServiceBlocks = blockStatusByShuffleService
+            .getOrElseUpdate(externalShuffleServiceIdOnHost(id), new JHashMap[BlockId, BlockStatus])
           Some(externalShuffleServiceBlocks)
         } else {
           None
         }
 
-      blockManagerInfo(id) =
-        new BlockManagerInfo(id, System.currentTimeMillis(), maxOnHeapMemSize, maxOffHeapMemSize,
-          slaveEndpoint, externalShuffleServiceBlockStatus)
+      blockManagerInfo(id) = new BlockManagerInfo(id, System.currentTimeMillis(), maxOnHeapMemSize,
+        maxOffHeapMemSize, slaveEndpoint, externalShuffleServiceBlockStatus)
     }
     listenerBus.post(SparkListenerBlockManagerAdded(time, id, maxOnHeapMemSize + maxOffHeapMemSize,
         Some(maxOnHeapMemSize), Some(maxOffHeapMemSize)))
@@ -549,7 +546,7 @@ private[spark] class BlockManagerInfo(
 
   /**
    * Cached blocks held exclusively by this BlockManager. This does not include broadcast blocks
-   * and local disc cached blocks when external shuffle service is enabled.
+   * and local disc persisted blocks when external shuffle service is enabled.
    */
   private val _exclusiveCachedBlocks = new mutable.HashSet[BlockId]
 

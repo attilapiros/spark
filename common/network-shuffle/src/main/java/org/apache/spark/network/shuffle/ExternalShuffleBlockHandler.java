@@ -51,7 +51,7 @@ import org.apache.spark.network.util.TransportConf;
  *
  * Handles registering executors and opening shuffle or disk persisted RDD blocks from them.
  * Blocks are registered with the "one-for-one" strategy, meaning each Transport-layer Chunk
- * is equivalent to one Spark-level shuffle block or to one RDD block.
+ * is equivalent to one block.
  */
 public class ExternalShuffleBlockHandler extends RpcHandler {
   private static final Logger logger = LoggerFactory.getLogger(ExternalShuffleBlockHandler.class);
@@ -214,8 +214,7 @@ public class ExternalShuffleBlockHandler extends RpcHandler {
   private class ManagedBufferIterator implements Iterator<ManagedBuffer> {
 
     private int index = 0;
-    private final Function<Integer, ManagedBuffer> blockDataGetter;
-    // An array containing mapId and reduceId pairs.
+    private final Function<Integer, ManagedBuffer> blockDataForIndexFn;
     private final int size;
 
     ManagedBufferIterator(final String appId, final String execId, String[] blockIds) {
@@ -224,13 +223,13 @@ public class ExternalShuffleBlockHandler extends RpcHandler {
         final int shuffleId = Integer.parseInt(blockId0Parts[1]);
         final int[] mapIdAndReduceIds = shuffleMapIdAndReduceIds(blockIds, shuffleId);
         size = mapIdAndReduceIds.length;
-        blockDataGetter = index -> blockManager.getBlockData(appId, execId, shuffleId,
-            mapIdAndReduceIds[index], mapIdAndReduceIds[index + 1]);
+        blockDataForIndexFn = index -> blockManager.getBlockData(appId, execId, shuffleId,
+          mapIdAndReduceIds[index], mapIdAndReduceIds[index + 1]);
       } else if(blockId0Parts.length == 3 && blockId0Parts[0].equals("rdd")) {
         final int[] rddAndSplitIds = rddAndSplitIds(blockIds);
         size = rddAndSplitIds.length;
-        blockDataGetter = index -> blockManager.getBlockData(appId, execId,
-            rddAndSplitIds[index], rddAndSplitIds[index + 1]);
+        blockDataForIndexFn = index -> blockManager.getBlockData(appId, execId,
+          rddAndSplitIds[index], rddAndSplitIds[index + 1]);
       } else {
         throw new IllegalArgumentException("Unexpected block id format: " + blockIds[0]);
       }
@@ -241,7 +240,7 @@ public class ExternalShuffleBlockHandler extends RpcHandler {
       for (int i = 0; i < blockIds.length; i++) {
         String[] blockIdParts = blockIds[i].split("_");
         if (blockIdParts.length != 3 || !blockIdParts[0].equals("rdd")) {
-          throw new IllegalArgumentException("Unexpected block id format: " + blockIds[i]);
+          throw new IllegalArgumentException("Unexpected RDD block id format: " + blockIds[i]);
         }
         rddAndSplitIds[2 * i] = Integer.parseInt(blockIdParts[1]);
         rddAndSplitIds[2 * i + 1] = Integer.parseInt(blockIdParts[2]);
@@ -273,7 +272,7 @@ public class ExternalShuffleBlockHandler extends RpcHandler {
 
     @Override
     public ManagedBuffer next() {
-      final ManagedBuffer block = blockDataGetter.apply(index);
+      final ManagedBuffer block = blockDataForIndexFn.apply(index);
       index += 2;
       metrics.blockTransferRateBytes.mark(block != null ? block.size() : 0);
       return block;

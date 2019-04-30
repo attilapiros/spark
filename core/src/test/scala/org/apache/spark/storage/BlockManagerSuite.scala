@@ -94,7 +94,7 @@ class BlockManagerSuite extends SparkFunSuite with Matchers with BeforeAndAfterE
       maxMem: Long,
       name: String = SparkContext.DRIVER_IDENTIFIER,
       master: BlockManagerMaster = this.master,
-      blockTransferClientSync: Option[BlockTransferClientSync] = None,
+      blockTransferClientSync: Option[BlockTransferClientSync] = Option.empty,
       testConf: Option[SparkConf] = None): BlockManager = {
     val bmConf = testConf.map(_.setAll(conf.getAll)).getOrElse(conf)
     bmConf.set(TEST_MEMORY, maxMem)
