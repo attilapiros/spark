@@ -116,14 +116,14 @@ public class ExternalShuffleBlockHandlerSuite {
     verify(callback, never()).onFailure(any());
 
     StreamHandle handle =
-        (StreamHandle) BlockTransferMessage.Decoder.fromByteBuffer(response.getValue());
+      (StreamHandle) BlockTransferMessage.Decoder.fromByteBuffer(response.getValue());
     assertEquals(2, handle.numChunks);
 
     @SuppressWarnings("unchecked")
     ArgumentCaptor<Iterator<ManagedBuffer>> stream = (ArgumentCaptor<Iterator<ManagedBuffer>>)
         (ArgumentCaptor<?>) ArgumentCaptor.forClass(Iterator.class);
     verify(streamManager, times(1)).registerStream(anyString(), stream.capture(),
-        any());
+      any());
     Iterator<ManagedBuffer> buffers = stream.getValue();
     assertEquals(blockMarkers[0], buffers.next());
     assertEquals(blockMarkers[1], buffers.next());

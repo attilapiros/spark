@@ -94,7 +94,7 @@ class BlockManagerSuite extends SparkFunSuite with Matchers with BeforeAndAfterE
       maxMem: Long,
       name: String = SparkContext.DRIVER_IDENTIFIER,
       master: BlockManagerMaster = this.master,
-      blockTransferClientSync: Option[BlockTransferClientSync] = Option.empty,
+      blockTransferClientSync: Option[BlockTransferClientSync] = None,
       testConf: Option[SparkConf] = None): BlockManager = {
     val bmConf = testConf.map(_.setAll(conf.getAll)).getOrElse(conf)
     bmConf.set(TEST_MEMORY, maxMem)
@@ -1357,6 +1357,36 @@ class BlockManagerSuite extends SparkFunSuite with Matchers with BeforeAndAfterE
     assert(master.getLocations("item").nonEmpty)
     assert(store2.getRemoteBytes("item").isEmpty)
     assert(master.getLocations("item").isEmpty)
+  }
+
+  test("test sorting of block locations") {
+    val localHost = "localhost"
+    val otherHost = "otherHost"
+    val store = makeBlockManager(8000, "executor1")
+    val externalShuffleServicePort = StorageUtils.externalShuffleServicePort(conf)
+    val port = store.blockTransferService.port
+    val rack = Some("rack")
+    val blockManagerWithTopolgyInfo = BlockManagerId(
+      store.blockManagerId.executorId,
+      store.blockManagerId.host,
+      store.blockManagerId.port,
+      rack)
+    store.blockManagerId = blockManagerWithTopolgyInfo
+    val locations = Seq(
+      BlockManagerId("executor4", otherHost, externalShuffleServicePort, rack),
+      BlockManagerId("executor3", otherHost, port, rack),
+      BlockManagerId("executor6", otherHost, externalShuffleServicePort),
+      BlockManagerId("executor5", otherHost, port),
+      BlockManagerId("executor2", localHost, externalShuffleServicePort),
+      BlockManagerId("executor1", localHost, port))
+    val sortedLocations = Seq(
+      BlockManagerId("executor1", localHost, port),
+      BlockManagerId("executor2", localHost, externalShuffleServicePort),
+      BlockManagerId("executor3", otherHost, port, rack),
+      BlockManagerId("executor4", otherHost, externalShuffleServicePort, rack),
+      BlockManagerId("executor5", otherHost, port),
+      BlockManagerId("executor6", otherHost, externalShuffleServicePort))
+    assert(store.sortLocations(locations) === sortedLocations)
   }
 
   test("SPARK-20640: Shuffle registration timeout and maxAttempts conf are working") {

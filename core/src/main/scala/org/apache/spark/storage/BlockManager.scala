@@ -842,21 +842,30 @@ private[spark] class BlockManager(
     }
   }
 
+  private def preferExecutors(locations: Seq[BlockManagerId]): Seq[BlockManagerId] = {
+    val (executors, shuffleServers) = locations.partition(_.port != externalShuffleServicePort)
+    executors ++ shuffleServers
+  }
+
   /**
    * Return a list of locations for the given block, prioritizing the local machine since
    * multiple block managers can share the same host, followed by hosts on the same rack.
+   *
+   * Within each of the above listed groups (same host, same rack and others) executors are
+   * preferred over the external shuffle service.
    */
-  private def sortLocations(locations: Seq[BlockManagerId]): Seq[BlockManagerId] = {
+  private[spark] def sortLocations(locations: Seq[BlockManagerId]): Seq[BlockManagerId] = {
     val locs = Random.shuffle(locations)
-    val (preferredLocs, otherLocs) = locs.partition { loc => blockManagerId.host == loc.host }
-    blockManagerId.topologyInfo match {
-      case None => preferredLocs ++ otherLocs
+    val (preferredLocs, otherLocs) = locs.partition(_.host == blockManagerId.host)
+    val orderedParts = blockManagerId.topologyInfo match {
+      case None => Seq(preferredLocs, otherLocs)
       case Some(_) =>
         val (sameRackLocs, differentRackLocs) = otherLocs.partition {
           loc => blockManagerId.topologyInfo == loc.topologyInfo
         }
-        preferredLocs ++ sameRackLocs ++ differentRackLocs
+        Seq(preferredLocs, sameRackLocs, differentRackLocs)
     }
+    orderedParts.map(preferExecutors).reduce(_ ++ _)
   }
 
   /**

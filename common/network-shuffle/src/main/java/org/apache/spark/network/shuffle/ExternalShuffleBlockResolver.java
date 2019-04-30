@@ -187,7 +187,7 @@ public class ExternalShuffleBlockResolver {
     ExecutorShuffleInfo executor = executors.get(new AppExecId(appId, execId));
     if (executor == null) {
       throw new RuntimeException(
-          String.format("Executor is not registered (appId=%s, execId=%s)", appId, execId));
+        String.format("Executor is not registered (appId=%s, execId=%s)", appId, execId));
     }
     return getDiskPersistedRddBlockData(executor, rddId, splitIndex);
   }

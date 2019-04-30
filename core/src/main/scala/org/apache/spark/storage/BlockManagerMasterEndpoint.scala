@@ -620,13 +620,15 @@ private[spark] class BlockManagerInfo(
         }
       }
 
-      if (!blockId.isBroadcast &&
-        (blockStatus.memSize > 0 || (!externalShuffleServiceEnabled && blockStatus.diskSize > 0))) {
-        _exclusiveCachedBlocks += blockId
-      } else if (blockExists) {
-        // removing block from the exclusive cached blocks set when updated to non-exclusive
-        _exclusiveCachedBlocks -= blockId
+      if (!blockId.isBroadcast) {
+        if (!externalShuffleServiceEnabled || !storageLevel.useDisk) {
+          _exclusiveCachedBlocks += blockId
+        } else if (blockExists) {
+          // removing block from the exclusive cached blocks when updated to non-exclusive
+          _exclusiveCachedBlocks -= blockId
+        }
       }
+
       externalShuffleServiceBlockStatus.foreach { shuffleServiceBlocks =>
         if (!blockId.isBroadcast && blockStatus.diskSize > 0) {
           shuffleServiceBlocks.put(blockId, blockStatus)
