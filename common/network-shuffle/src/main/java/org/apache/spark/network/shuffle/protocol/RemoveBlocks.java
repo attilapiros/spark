@@ -23,6 +23,9 @@ import org.apache.spark.network.protocol.Encoders;
 
 import java.util.Arrays;
 
+// Needed by ScalaDoc. See SPARK-7726
+import static org.apache.spark.network.shuffle.protocol.BlockTransferMessage.Type;
+
 /** Request to remove a set of blocks. */
 public class RemoveBlocks extends BlockTransferMessage {
   public final String appId;
