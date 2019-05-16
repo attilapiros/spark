@@ -200,7 +200,7 @@ class BlockManagerMasterEndpoint(
     }
     val removeRddBlockViaExtShuffleServiceFutures = externalShuffleClient.map { shuffleClient =>
       blocksToDeleteByShuffleService.map { case (bmId, blockIds) =>
-        Future {
+        Future[Int] {
           shuffleClient.removeBlocks(
             bmId.host,
             bmId.port,
