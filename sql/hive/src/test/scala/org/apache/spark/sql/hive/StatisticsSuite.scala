@@ -31,10 +31,11 @@ import org.apache.spark.sql._
 import org.apache.spark.sql.catalyst.TableIdentifier
 import org.apache.spark.sql.catalyst.analysis.NoSuchPartitionException
 import org.apache.spark.sql.catalyst.catalog.{CatalogColumnStat, CatalogStatistics, HiveTableRelation}
-import org.apache.spark.sql.catalyst.plans.logical.{ColumnStat, HistogramBin, HistogramSerializer}
+import org.apache.spark.sql.catalyst.plans.logical.HistogramBin
 import org.apache.spark.sql.catalyst.util.{DateTimeUtils, StringUtils}
 import org.apache.spark.sql.execution.command.{AnalyzeColumnCommand, CommandUtils, DDLUtils}
 import org.apache.spark.sql.execution.datasources.LogicalRelation
+import org.apache.spark.sql.execution.exchange.EnsureRequirements
 import org.apache.spark.sql.execution.joins._
 import org.apache.spark.sql.hive.HiveExternalCatalog._
 import org.apache.spark.sql.hive.test.TestHiveSingleton
@@ -1514,4 +1515,84 @@ class StatisticsSuite extends StatisticsCollectionTestBase with TestHiveSingleto
       }
     }
   }
+
+  private def checkNumBroadcastHashJoins(df: DataFrame, expectedNumBhj: Int, clue: String): Unit = {
+    val plan = EnsureRequirements(spark.sessionState.conf).apply(df.queryExecution.sparkPlan)
+    assert(plan.collect { case p: BroadcastHashJoinExec => p }.size === expectedNumBhj, clue)
+  }
+
+  private def checkDeserializationFactor(tableName: String, exists: Boolean): Unit = {
+    spark.sessionState.catalog.refreshTable(TableIdentifier(tableName))
+    val catalogTable = getCatalogTable(tableName)
+    assert(catalogTable.stats.isDefined)
+    assert(catalogTable.stats.get.deserFactor.isDefined === exists)
+  }
+
+  private def testDeserializationFactor(fileformat: String): Unit = {
+    test(s"test deserialization factor (fileformat = $fileformat)") {
+      val tableName = s"sizeTest"
+
+      withTable(tableName) {
+        sql(s"CREATE TABLE $tableName STORED AS $fileformat AS SELECT * FROM SRC")
+
+        val sizeInBytes = spark.table(tableName).queryExecution.optimizedPlan.stats.sizeInBytes
+
+        val catalogTable = getCatalogTable(tableName)
+        assert(catalogTable.stats.isEmpty)
+
+        withSQLConf(SQLConf.AUTO_BROADCASTJOIN_THRESHOLD.key -> s"${sizeInBytes - 1}") {
+          val res = sql(s"SELECT * FROM $tableName t1, $tableName t2 WHERE t1.key = t2.key")
+          checkNumBroadcastHashJoins(res, 0,
+            "sort merge join should be taken as threshold is smaller than table size")
+        }
+
+        withSQLConf(SQLConf.AUTO_BROADCASTJOIN_THRESHOLD.key -> s"${sizeInBytes + 1}") {
+          val res = sql(s"SELECT * FROM $tableName t1, $tableName t2 WHERE t1.key = t2.key")
+          checkNumBroadcastHashJoins(res, 1,
+            "broadcast join should be taken as the threshold is greater than table size")
+        }
+        sql(s"ANALYZE TABLE $tableName COMPUTE STATISTICS")
+        checkDeserializationFactor(tableName, exists = false)
+
+        withSQLConf(
+          SQLConf.DESERIALIZATION_FACTOR_CALC_ENABLED.key -> "true",
+          SQLConf.AUTO_BROADCASTJOIN_THRESHOLD.key -> s"${sizeInBytes + 1}") {
+          sql(s"ANALYZE TABLE $tableName COMPUTE STATISTICS")
+          checkDeserializationFactor(tableName, exists = true)
+
+          val res = sql(s"SELECT * FROM $tableName t1, $tableName t2 WHERE t1.key = t2.key")
+          checkNumBroadcastHashJoins(res, 0,
+            "sort merge join should be taken despite the threshold is greater than the table" +
+              "size as the deserialization factor is applied")
+        }
+
+        withSQLConf(
+          SQLConf.DESERIALIZATION_FACTOR_CALC_ENABLED.key -> "false",
+          SQLConf.AUTO_BROADCASTJOIN_THRESHOLD.key -> s"${sizeInBytes + 1}") {
+          sql(s"ANALYZE TABLE $tableName COMPUTE STATISTICS")
+          checkDeserializationFactor(tableName, exists = true)
+
+          val res = sql(s"SELECT * FROM $tableName t1, $tableName t2 WHERE t1.key = t2.key")
+          checkNumBroadcastHashJoins(res, 0,
+          "sort merge join should be taken despite deserialization factor calculation is " +
+            "disabled as the old factor is reused")
+        }
+
+        sql(s"TRUNCATE TABLE $tableName")
+
+        withSQLConf(
+          SQLConf.DESERIALIZATION_FACTOR_CALC_ENABLED.key -> "false",
+          SQLConf.AUTO_BROADCASTJOIN_THRESHOLD.key -> s"${sizeInBytes + 1}") {
+          sql(s"ANALYZE TABLE $tableName COMPUTE STATISTICS")
+          checkDeserializationFactor(tableName, exists = false)
+
+          val res = sql(s"SELECT * FROM $tableName t1, $tableName t2 WHERE t1.key = t2.key")
+          checkNumBroadcastHashJoins(res, 1,
+          "broadcast join should be taken as deserialization factor is deleted by TRUNCATE")
+        }
+      }
+    }
+  }
+
+  Seq("PARQUET", "ORC").foreach(testDeserializationFactor)
 }

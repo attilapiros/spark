@@ -16,13 +16,25 @@
  */
 package org.apache.spark.sql.execution.datasources.parquet
 
+import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.{FileStatus, Path}
-import org.apache.parquet.hadoop.ParquetFileWriter
+import org.apache.parquet.hadoop.{ParquetFileReader, ParquetFileWriter}
 
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.types.StructType
 
 object ParquetUtils {
+  def rawSize(hadoopConf: Configuration, filePath: Path): BigInt = {
+    def add(a: Long, b: Long): Long = a + b
+
+    val footer = ParquetFileReader.readFooter(hadoopConf, filePath)
+    footer
+      .getBlocks
+      .stream
+      .mapToLong(_.getColumns.stream.mapToLong(_.getTotalUncompressedSize).reduce(0L, add))
+      .reduce(0L, add)
+  }
+
   def inferSchema(
       sparkSession: SparkSession,
       parameters: Map[String, String],

@@ -35,7 +35,7 @@ import org.apache.spark.sql.catalyst.parser.CatalystSqlParser
 import org.apache.spark.sql.catalyst.util.quoteIdentifier
 import org.apache.spark.sql.execution.datasources.SchemaMergeUtils
 import org.apache.spark.sql.types._
-import org.apache.spark.util.{SerializableConfiguration, ThreadUtils}
+import org.apache.spark.util.ThreadUtils
 
 object OrcUtils extends Logging {
 
@@ -45,6 +45,15 @@ object OrcUtils extends Logging {
     "SNAPPY" -> ".snappy",
     "ZLIB" -> ".zlib",
     "LZO" -> ".lzo")
+
+  def rawSize(hadoopConf: Configuration, filePath: Path): BigInt = {
+    val fs = filePath.getFileSystem(hadoopConf)
+    val readerOptions = OrcFile.readerOptions(hadoopConf).filesystem(fs)
+    try {
+      val reader = OrcFile.createReader(filePath, readerOptions)
+      reader.getRawDataSize
+    }
+  }
 
   def listOrcFiles(pathStr: String, conf: Configuration): Seq[Path] = {
     val origPath = new Path(pathStr)

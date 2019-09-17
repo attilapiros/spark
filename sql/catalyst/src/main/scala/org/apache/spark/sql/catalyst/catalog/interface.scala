@@ -378,6 +378,7 @@ object CatalogTable {
  */
 case class CatalogStatistics(
     sizeInBytes: BigInt,
+    deserFactor: Option[Int] = None,
     rowCount: Option[BigInt] = None,
     colStats: Map[String, CatalogColumnStat] = Map.empty) {
 
@@ -391,18 +392,22 @@ case class CatalogStatistics(
         .flatMap(a => colStats.get(a.name).map(a -> _.toPlanStat(a.name, a.dataType))))
       // Estimate size as number of rows * row size.
       val size = EstimationUtils.getOutputSize(planOutput, rowCount.get, attrStats)
-      Statistics(sizeInBytes = size, rowCount = rowCount, attributeStats = attrStats)
+      Statistics(
+        sizeInBytes = size * BigInt(deserFactor.getOrElse(1)),
+        rowCount = rowCount,
+        attributeStats = attrStats)
     } else {
       // When CBO is disabled or the table doesn't have other statistics, we apply the size-only
       // estimation strategy and only propagate sizeInBytes in statistics.
-      Statistics(sizeInBytes = sizeInBytes)
+      Statistics(sizeInBytes = sizeInBytes * BigInt(deserFactor.getOrElse(1)))
     }
   }
 
   /** Readable string representation for the CatalogStatistics. */
   def simpleString: String = {
     val rowCountString = if (rowCount.isDefined) s", ${rowCount.get} rows" else ""
-    s"$sizeInBytes bytes$rowCountString"
+    val deserFactorString = if (deserFactor.isDefined) s", deserfactor=${deserFactor.get} " else ""
+    s"$sizeInBytes bytes$rowCountString$deserFactorString"
   }
 }
 

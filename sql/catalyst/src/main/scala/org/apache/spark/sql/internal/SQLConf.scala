@@ -1336,6 +1336,18 @@ object SQLConf {
       .booleanConf
       .createWithDefault(false)
 
+  val DESERIALIZATION_FACTOR_CALC_ENABLED =
+    buildConf("spark.sql.statistics.deserFactor.calc.enabled")
+      .doc("Enables the calculation of the deserialization factor as a table statistic." +
+        "This factor is calculated for columnar storage formats by dividing the raw byte size " +
+        "of uncompressed data with the file size. In case of partitioned table the " +
+        "the maximum of these factors is taken and stored in the meta store. " +
+        "If the factor is already calculated and stored in the meta store but this config is " +
+        "disabled in a subsequent ANALYZE TABLE then the old factor will be still applied only a " +
+        "TRUNCATE or a DROP table removes the factor.")
+      .booleanConf
+      .createWithDefault(false)
+
   val CBO_ENABLED =
     buildConf("spark.sql.cbo.enabled")
       .doc("Enables CBO for estimation of plan statistics when set true.")
@@ -2359,6 +2371,8 @@ class SQLConf extends Serializable with Logging {
   def cboEnabled: Boolean = getConf(SQLConf.CBO_ENABLED)
 
   def autoSizeUpdateEnabled: Boolean = getConf(SQLConf.AUTO_SIZE_UPDATE_ENABLED)
+
+  def deserFactorStatCalcEnabled: Boolean = getConf(SQLConf.DESERIALIZATION_FACTOR_CALC_ENABLED)
 
   def joinReorderEnabled: Boolean = getConf(SQLConf.JOIN_REORDER_ENABLED)
 
