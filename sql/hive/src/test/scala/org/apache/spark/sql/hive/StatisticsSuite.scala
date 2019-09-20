@@ -1528,25 +1528,28 @@ class StatisticsSuite extends StatisticsCollectionTestBase with TestHiveSingleto
     assert(catalogTable.stats.get.deserFactor.isDefined === exists)
   }
 
-  private def testDeserializationFactor(fileformat: String): Unit = {
-    test(s"test deserialization factor (fileformat = $fileformat)") {
+  private def testDeserializationFactor(fileformat: String, compression: String): Unit = {
+    test(s"test deserialization factor ($fileformat with $compression)") {
       val tableName = s"sizeTest"
 
       withTable(tableName) {
-        sql(s"CREATE TABLE $tableName STORED AS $fileformat AS SELECT * FROM SRC")
+        val tblProperties =
+          if (compression.isEmpty) "" else s"TBLPROPERTIES ('compression'='$compression')"
+        sql(s"CREATE TABLE $tableName STORED AS $fileformat $tblProperties AS SELECT * FROM SRC ")
 
-        val sizeInBytes = spark.table(tableName).queryExecution.optimizedPlan.stats.sizeInBytes
+        val origSizeInBytes = spark.table(tableName).queryExecution.optimizedPlan.stats.sizeInBytes
+        logInfo(s"original sizeInBytes (file size): $origSizeInBytes")
 
         val catalogTable = getCatalogTable(tableName)
         assert(catalogTable.stats.isEmpty)
 
-        withSQLConf(SQLConf.AUTO_BROADCASTJOIN_THRESHOLD.key -> s"${sizeInBytes - 1}") {
+        withSQLConf(SQLConf.AUTO_BROADCASTJOIN_THRESHOLD.key -> s"${origSizeInBytes - 1}") {
           val res = sql(s"SELECT * FROM $tableName t1, $tableName t2 WHERE t1.key = t2.key")
           checkNumBroadcastHashJoins(res, 0,
             "sort merge join should be taken as threshold is smaller than table size")
         }
 
-        withSQLConf(SQLConf.AUTO_BROADCASTJOIN_THRESHOLD.key -> s"${sizeInBytes + 1}") {
+        withSQLConf(SQLConf.AUTO_BROADCASTJOIN_THRESHOLD.key -> s"${origSizeInBytes + 1}") {
           val res = sql(s"SELECT * FROM $tableName t1, $tableName t2 WHERE t1.key = t2.key")
           checkNumBroadcastHashJoins(res, 1,
             "broadcast join should be taken as the threshold is greater than table size")
@@ -1556,9 +1559,12 @@ class StatisticsSuite extends StatisticsCollectionTestBase with TestHiveSingleto
 
         withSQLConf(
           SQLConf.DESERIALIZATION_FACTOR_CALC_ENABLED.key -> "true",
-          SQLConf.AUTO_BROADCASTJOIN_THRESHOLD.key -> s"${sizeInBytes + 1}") {
+          SQLConf.AUTO_BROADCASTJOIN_THRESHOLD.key -> s"${origSizeInBytes + 1}") {
           sql(s"ANALYZE TABLE $tableName COMPUTE STATISTICS")
           checkDeserializationFactor(tableName, exists = true)
+          val newSizeInBytes = spark.table(tableName).queryExecution.optimizedPlan.stats.sizeInBytes
+          assert(2 * origSizeInBytes <= newSizeInBytes)
+          logInfo(s"sizeInBytes after applying deserFactor: $newSizeInBytes")
 
           val res = sql(s"SELECT * FROM $tableName t1, $tableName t2 WHERE t1.key = t2.key")
           checkNumBroadcastHashJoins(res, 0,
@@ -1568,7 +1574,7 @@ class StatisticsSuite extends StatisticsCollectionTestBase with TestHiveSingleto
 
         withSQLConf(
           SQLConf.DESERIALIZATION_FACTOR_CALC_ENABLED.key -> "false",
-          SQLConf.AUTO_BROADCASTJOIN_THRESHOLD.key -> s"${sizeInBytes + 1}") {
+          SQLConf.AUTO_BROADCASTJOIN_THRESHOLD.key -> s"${origSizeInBytes + 1}") {
           sql(s"ANALYZE TABLE $tableName COMPUTE STATISTICS")
           checkDeserializationFactor(tableName, exists = true)
 
@@ -1582,7 +1588,7 @@ class StatisticsSuite extends StatisticsCollectionTestBase with TestHiveSingleto
 
         withSQLConf(
           SQLConf.DESERIALIZATION_FACTOR_CALC_ENABLED.key -> "false",
-          SQLConf.AUTO_BROADCASTJOIN_THRESHOLD.key -> s"${sizeInBytes + 1}") {
+          SQLConf.AUTO_BROADCASTJOIN_THRESHOLD.key -> s"${origSizeInBytes + 1}") {
           sql(s"ANALYZE TABLE $tableName COMPUTE STATISTICS")
           checkDeserializationFactor(tableName, exists = false)
 
@@ -1594,5 +1600,11 @@ class StatisticsSuite extends StatisticsCollectionTestBase with TestHiveSingleto
     }
   }
 
-  Seq("PARQUET", "ORC").foreach(testDeserializationFactor)
+  Seq(
+    "PARQUET" -> "",
+    "ORC" -> "",
+    "PARQUET" -> "snappy",
+    "ORC" -> "snappy").foreach { case (fileformat, compression) =>
+      testDeserializationFactor(fileformat, compression)
+    }
 }
