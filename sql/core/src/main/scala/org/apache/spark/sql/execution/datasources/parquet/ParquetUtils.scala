@@ -16,6 +16,8 @@
  */
 package org.apache.spark.sql.execution.datasources.parquet
 
+import java.io.IOException
+
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.{FileStatus, Path}
 import org.apache.parquet.hadoop.{ParquetFileReader, ParquetFileWriter}
@@ -27,12 +29,16 @@ object ParquetUtils {
   def rawSize(hadoopConf: Configuration, filePath: Path): BigInt = {
     def add(a: Long, b: Long): Long = a + b
 
-    val footer = ParquetFileReader.readFooter(hadoopConf, filePath)
-    footer
-      .getBlocks
-      .stream
-      .mapToLong(_.getColumns.stream.mapToLong(_.getTotalUncompressedSize).reduce(0L, add))
-      .reduce(0L, add)
+    try {
+      val footer = ParquetFileReader.readFooter(hadoopConf, filePath)
+      footer
+        .getBlocks
+        .stream
+        .mapToLong(_.getColumns.stream.mapToLong(_.getTotalUncompressedSize).reduce(0L, add))
+        .reduce(0L, add)
+    } catch {
+      case _: IOException => BigInt(0)
+    }
   }
 
   def inferSchema(

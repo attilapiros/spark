@@ -17,6 +17,7 @@
 
 package org.apache.spark.sql.execution.datasources.orc
 
+import java.io.IOException
 import java.nio.charset.StandardCharsets.UTF_8
 import java.util.Locale
 
@@ -52,6 +53,8 @@ object OrcUtils extends Logging {
     try {
       val reader = OrcFile.createReader(filePath, readerOptions)
       reader.getRawDataSize
+    } catch {
+      case _: IOException => BigInt(0)
     }
   }
 

@@ -1504,15 +1504,13 @@ class StatisticsSuite extends StatisticsCollectionTestBase with TestHiveSingleto
     assert(catalogTable.stats.get.deserFactor.isDefined === exists)
   }
 
-  private def testDeserializationFactor(fileformat: String, compression: String)
-    : Unit = test(s"test deserialization factor ($fileformat with $compression)") {
+  private def testDeserializationFactor(fileformat: String)
+    : Unit = test(s"SPARK-24914 - test deserialization factor ($fileformat)") {
     val table = s"sizeTest"
 
     withTable(table) {
-      val tblProperties =
-        if (compression.isEmpty) "" else s"TBLPROPERTIES ('compression'='$compression')"
       sql(s"CREATE TABLE $table (key STRING, value STRING) PARTITIONED BY (ds STRING) " +
-        s"STORED AS $fileformat $tblProperties")
+        s"STORED AS $fileformat")
       sql(s"INSERT INTO TABLE $table PARTITION (ds='2010-01-01') SELECT * FROM src")
 
       val catalogTable = getCatalogTable(table)
@@ -1592,12 +1590,5 @@ class StatisticsSuite extends StatisticsCollectionTestBase with TestHiveSingleto
     }
   }
 
-
-  Seq(
-    "PARQUET" -> "",
-    "ORC" -> "",
-    "PARQUET" -> "snappy",
-    "ORC" -> "snappy").foreach { case (fileformat, compression) =>
-      testDeserializationFactor(fileformat, compression)
-    }
+  Seq("PARQUET", "ORC").foreach(testDeserializationFactor)
 }
