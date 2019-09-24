@@ -1511,14 +1511,12 @@ class StatisticsSuite extends StatisticsCollectionTestBase with TestHiveSingleto
     withTable(table) {
       sql(s"CREATE TABLE $table (key STRING, value STRING) PARTITIONED BY (ds STRING) " +
         s"STORED AS $fileformat")
-      sql(s"INSERT INTO TABLE $table PARTITION (ds='2010-01-01') SELECT * FROM src")
+      sql(s"INSERT INTO TABLE $table PARTITION (ds='2010-01-01') SELECT '1', 'A' FROM SRC")
 
       val catalogTable = getCatalogTable(table)
       assert(catalogTable.stats.isEmpty)
-
       sql(s"ANALYZE TABLE $table COMPUTE STATISTICS")
       checkDeserializationFactor(table, exists = false)
-
       val origSizeInBytes = spark.table(table).queryExecution.optimizedPlan.stats.sizeInBytes
       logInfo(s"original sizeInBytes (file size): $origSizeInBytes")
 
@@ -1542,7 +1540,6 @@ class StatisticsSuite extends StatisticsCollectionTestBase with TestHiveSingleto
         val newSizeInBytes = spark.table(table).queryExecution.optimizedPlan.stats.sizeInBytes
         assert(2 * origSizeInBytes <= newSizeInBytes)
         logInfo(s"sizeInBytes after applying deserFactor: $newSizeInBytes")
-
         val res = sql(s"SELECT * FROM $table t1, $table t2 WHERE t1.key = t2.key")
         checkNumBroadcastHashJoins(res, 0,
           "sort merge join should be taken despite the threshold is greater than the table" +
@@ -1554,7 +1551,6 @@ class StatisticsSuite extends StatisticsCollectionTestBase with TestHiveSingleto
         SQLConf.AUTO_BROADCASTJOIN_THRESHOLD.key -> s"${origSizeInBytes + 1}") {
         sql(s"ANALYZE TABLE $table COMPUTE STATISTICS")
         checkDeserializationFactor(table, exists = true)
-
         val res = sql(s"SELECT * FROM $table t1, $table t2 WHERE t1.key = t2.key")
         checkNumBroadcastHashJoins(res, 0,
         "sort merge join should be taken despite deserialization factor calculation is " +
@@ -1564,15 +1560,21 @@ class StatisticsSuite extends StatisticsCollectionTestBase with TestHiveSingleto
       withSQLConf(SQLConf.AUTO_SIZE_UPDATE_ENABLED.key -> "true") {
         val catalogTableBefore = getCatalogTable(table)
         val deserFactorBefore = catalogTableBefore.stats.get.deserFactor.get
-
-        sql(s"INSERT INTO TABLE $table PARTITION (ds='2010-01-02') SELECT * FROM src")
+        sql(s"INSERT INTO TABLE $table PARTITION (ds='2010-01-02') SELECT '1', 'A' from SRC")
         spark.sessionState.catalog.refreshTable(TableIdentifier(table))
+        val catalogTable1 = getCatalogTable(table)
+        assert(catalogTable1.stats.isDefined &&
+          catalogTable1.stats.get.deserFactor.isDefined)
+        assert(catalogTable1.stats.get.deserFactor.get === deserFactorBefore,
+          "deserFactor should not change by adding a smaller or same size partition")
 
-        val catalogTableAfter = getCatalogTable(table)
-        assert(catalogTableAfter.stats.isDefined &&
-          catalogTableAfter.stats.get.deserFactor.isDefined)
-        assert(catalogTableAfter.stats.get.deserFactor.get === deserFactorBefore,
-          "deserialization factor should not change by adding a partition")
+        sql(s"INSERT INTO TABLE $table PARTITION (ds='2010-01-03') SELECT * FROM SRC")
+        spark.sessionState.catalog.refreshTable(TableIdentifier(table))
+        val catalogTable2 = getCatalogTable(table)
+        assert(catalogTable2.stats.isDefined &&
+          catalogTable2.stats.get.deserFactor.isDefined)
+        assert(catalogTable2.stats.get.deserFactor.get > deserFactorBefore,
+          "deserialization factor increased after adding a larger partition")
       }
 
       sql(s"TRUNCATE TABLE $table")
@@ -1582,7 +1584,6 @@ class StatisticsSuite extends StatisticsCollectionTestBase with TestHiveSingleto
         SQLConf.AUTO_BROADCASTJOIN_THRESHOLD.key -> s"${origSizeInBytes + 1}") {
         sql(s"ANALYZE TABLE $table COMPUTE STATISTICS")
         checkDeserializationFactor(table, exists = false)
-
         val res = sql(s"SELECT * FROM $table t1, $table t2 WHERE t1.key = t2.key")
         checkNumBroadcastHashJoins(res, 1,
           "broadcast join should be taken as deserialization factor is deleted by TRUNCATE")

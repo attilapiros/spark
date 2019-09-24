@@ -17,12 +17,15 @@
 
 package org.apache.spark.sql.catalyst.catalog
 
+import java.math.RoundingMode.UP
 import java.net.URI
 import java.time.ZoneOffset
 import java.util.Date
 
 import scala.collection.mutable
 import scala.util.control.NonFatal
+
+import com.google.common.math.DoubleMath
 
 import org.apache.spark.internal.Logging
 import org.apache.spark.sql.AnalysisException
@@ -386,22 +389,28 @@ case class CatalogStatistics(
    * Convert [[CatalogStatistics]] to [[Statistics]], and match column stats to attributes based
    * on column names.
    */
-  def toPlanStats(planOutput: Seq[Attribute], cboEnabled: Boolean): Statistics = {
+  def toPlanStats(planOutput: Seq[Attribute], cboEnabled: Boolean, deserFactorDistortion: Double)
+    : Statistics = {
     if (cboEnabled && rowCount.isDefined) {
       val attrStats = AttributeMap(planOutput
         .flatMap(a => colStats.get(a.name).map(a -> _.toPlanStat(a.name, a.dataType))))
       // Estimate size as number of rows * row size.
       val size = EstimationUtils.getOutputSize(planOutput, rowCount.get, attrStats)
       Statistics(
-        sizeInBytes = size * BigInt(deserFactor.getOrElse(1)),
+        sizeInBytes = applyDeserFactor(size, deserFactorDistortion),
         rowCount = rowCount,
         attributeStats = attrStats)
     } else {
       // When CBO is disabled or the table doesn't have other statistics, we apply the size-only
       // estimation strategy and only propagate sizeInBytes in statistics.
-      Statistics(sizeInBytes = sizeInBytes * BigInt(deserFactor.getOrElse(1)))
+      Statistics(sizeInBytes = applyDeserFactor(sizeInBytes, deserFactorDistortion))
     }
   }
+
+  private def applyDeserFactor(rawSize: BigInt, deserFactorDistortion: Double): BigInt =
+    deserFactor.map { df =>
+      BigInt(DoubleMath.roundToBigInteger(rawSize.doubleValue() * deserFactorDistortion * df, UP))
+    }.getOrElse(rawSize)
 
   /** Readable string representation for the CatalogStatistics. */
   def simpleString: String = {
@@ -636,7 +645,7 @@ case class HiveTableRelation(
   )
 
   override def computeStats(): Statistics = {
-    tableMeta.stats.map(_.toPlanStats(output, conf.cboEnabled))
+    tableMeta.stats.map(_.toPlanStats(output, conf.cboEnabled, conf.deserFactorDistortion))
       .orElse(tableStats)
       .getOrElse {
       throw new IllegalStateException("table stats must be specified.")

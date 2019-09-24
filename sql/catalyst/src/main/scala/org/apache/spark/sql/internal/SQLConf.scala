@@ -1348,6 +1348,12 @@ object SQLConf {
       .booleanConf
       .createWithDefault(false)
 
+  val DESERIALIZATION_FACTOR_EXTRA_DISTORTION =
+    buildConf("spark.sql.statistics.deserFactor.distortion")
+      .doc("Distortion value (multiplier) used at the application of the deserialization factor.")
+      .doubleConf
+      .createWithDefault(1.0)
+
   val CBO_ENABLED =
     buildConf("spark.sql.cbo.enabled")
       .doc("Enables CBO for estimation of plan statistics when set true.")
@@ -2373,6 +2379,8 @@ class SQLConf extends Serializable with Logging {
   def autoSizeUpdateEnabled: Boolean = getConf(SQLConf.AUTO_SIZE_UPDATE_ENABLED)
 
   def deserFactorStatCalcEnabled: Boolean = getConf(SQLConf.DESERIALIZATION_FACTOR_CALC_ENABLED)
+
+  def deserFactorDistortion: Double = getConf(SQLConf.DESERIALIZATION_FACTOR_EXTRA_DISTORTION)
 
   def joinReorderEnabled: Boolean = getConf(SQLConf.JOIN_REORDER_ENABLED)
 
