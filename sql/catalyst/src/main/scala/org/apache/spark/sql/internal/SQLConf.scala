@@ -1338,19 +1338,24 @@ object SQLConf {
 
   val DESERIALIZATION_FACTOR_CALC_ENABLED =
     buildConf("spark.sql.statistics.deserFactor.calc.enabled")
-      .doc("Enables the calculation of the deserialization factor as a table statistic." +
+      .doc("Enables the calculation of the deserialization factor as a table statistic. " +
         "This factor is calculated for columnar storage formats by dividing the raw byte size " +
-        "of uncompressed data with the file size. In case of partitioned table the " +
-        "the maximum of these factors is taken and stored in the meta store. " +
-        "If the factor is already calculated and stored in the meta store but this config is " +
-        "disabled in a subsequent ANALYZE TABLE then the old factor will be still applied only a " +
-        "TRUNCATE or a DROP table removes the factor.")
+        "of uncompressed data with the file size. It is used for scaling up size in bytes " +
+        "statistic which leads to better a estimate of in-memory data size which effects " +
+        "the query optimization (i.e at the decision about broadcast join strategy). " +
+        "In case of partitioned table the maximum of these factors is taken. " +
+        "When the factor is already calculated (and stored in the meta store) but the " +
+        "calculation is disabled in a subsequent ANALYZE TABLE (by setting this config to false) " +
+        "then the old factor will be applied as this factor can be removed only by TRUNCATE or a " +
+        "DROP table.")
       .booleanConf
       .createWithDefault(false)
 
   val DESERIALIZATION_FACTOR_EXTRA_DISTORTION =
     buildConf("spark.sql.statistics.deserFactor.distortion")
-      .doc("Distortion value (multiplier) used at the application of the deserialization factor.")
+      .doc("Distortion value used as an extra multiplier at the application of the " +
+        "deserialization factor making one capable to modify the computed table size even after " +
+        "the deserialization factor is calculated and stored in the meta store.")
       .doubleConf
       .createWithDefault(1.0)
 

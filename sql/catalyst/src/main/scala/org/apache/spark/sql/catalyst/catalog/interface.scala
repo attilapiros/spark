@@ -25,7 +25,7 @@ import java.util.Date
 import scala.collection.mutable
 import scala.util.control.NonFatal
 
-import com.google.common.math.DoubleMath
+import com.google.common.math.DoubleMath.roundToBigInteger
 
 import org.apache.spark.internal.Logging
 import org.apache.spark.sql.AnalysisException
@@ -407,15 +407,15 @@ case class CatalogStatistics(
     }
   }
 
-  private def applyDeserFactor(rawSize: BigInt, deserFactorDistortion: Double): BigInt =
-    deserFactor.map { df =>
-      BigInt(DoubleMath.roundToBigInteger(rawSize.doubleValue() * deserFactorDistortion * df, UP))
-    }.getOrElse(rawSize)
+  private def applyDeserFactor(size: BigInt, distortion: Double): BigInt =
+    deserFactor.map { factor =>
+      BigInt(roundToBigInteger(size.doubleValue * distortion * factor, UP))
+    }.getOrElse(size)
 
   /** Readable string representation for the CatalogStatistics. */
   def simpleString: String = {
-    val rowCountString = if (rowCount.isDefined) s", ${rowCount.get} rows" else ""
-    val deserFactorString = if (deserFactor.isDefined) s", deserfactor=${deserFactor.get} " else ""
+    val rowCountString = rowCount.map(c => s", $c rows").getOrElse("")
+    val deserFactorString = deserFactor.map(f => s", deserfactor=$f ").getOrElse("")
     s"$sizeInBytes bytes$rowCountString$deserFactorString"
   }
 }
