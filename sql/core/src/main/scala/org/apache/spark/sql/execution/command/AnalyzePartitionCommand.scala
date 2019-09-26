@@ -108,9 +108,7 @@ case class AnalyzePartitionCommand(
     // recorded in the metastore.
     val newPartitions = partitions.flatMap { p =>
       val totalSizeWithDeserFact = CommandUtils.calculateLocationSize(
-        sparkSession.sessionState,
-        tableMeta.identifier,
-        p.storage.locationUri)
+        sparkSession.sessionState, tableMeta.identifier, p.storage.locationUri)
       val newRowCount = rowCounts.get(p.spec)
       val newStats =
         CommandUtils.compareAndGetNewStats(tableMeta.stats, totalSizeWithDeserFact, newRowCount)

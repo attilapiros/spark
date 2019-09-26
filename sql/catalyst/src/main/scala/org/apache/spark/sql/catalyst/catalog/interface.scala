@@ -396,21 +396,16 @@ case class CatalogStatistics(
         .flatMap(a => colStats.get(a.name).map(a -> _.toPlanStat(a.name, a.dataType))))
       // Estimate size as number of rows * row size.
       val size = EstimationUtils.getOutputSize(planOutput, rowCount.get, attrStats)
-      Statistics(
-        sizeInBytes = applyDeserFactor(size, deserFactorDistortion),
-        rowCount = rowCount,
-        attributeStats = attrStats)
+      Statistics(sizeInBytes = size, rowCount = rowCount, attributeStats = attrStats)
     } else {
-      // When CBO is disabled or the table doesn't have other statistics, we apply the size-only
-      // estimation strategy and only propagate sizeInBytes in statistics.
-      Statistics(sizeInBytes = applyDeserFactor(sizeInBytes, deserFactorDistortion))
+      // When CBO is disabled or the table doesn't have other statistics, we apply the file size
+      // based estimation strategy and only propagate sizeInBytes in statistics.
+      val size = deserFactor.map { factor =>
+        BigInt(roundToBigInteger(sizeInBytes.doubleValue * deserFactorDistortion * factor, UP))
+      }.getOrElse(sizeInBytes)
+      Statistics(sizeInBytes = size)
     }
   }
-
-  private def applyDeserFactor(size: BigInt, distortion: Double): BigInt =
-    deserFactor.map { factor =>
-      BigInt(roundToBigInteger(size.doubleValue * distortion * factor, UP))
-    }.getOrElse(size)
 
   /** Readable string representation for the CatalogStatistics. */
   def simpleString: String = {

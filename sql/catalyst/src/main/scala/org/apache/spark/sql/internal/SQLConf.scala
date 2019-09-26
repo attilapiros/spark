@@ -1339,15 +1339,15 @@ object SQLConf {
   val DESERIALIZATION_FACTOR_CALC_ENABLED =
     buildConf("spark.sql.statistics.deserFactor.calc.enabled")
       .doc("Enables the calculation of the deserialization factor as a table statistic. " +
-        "This factor is calculated for columnar storage formats by dividing the raw byte size " +
-        "of uncompressed data with the file size. It is used for scaling up size in bytes " +
-        "statistic which leads to better a estimate of in-memory data size which effects " +
-        "the query optimization (i.e at the decision about broadcast join strategy). " +
-        "In case of partitioned table the maximum of these factors is taken. " +
-        "When the factor is already calculated (and stored in the meta store) but the " +
-        "calculation is disabled in a subsequent ANALYZE TABLE (by setting this config to false) " +
-        "then the old factor will be applied as this factor can be removed only by TRUNCATE or a " +
-        "DROP table.")
+        "This factor is calculated for columnar storage formats as a ratio of actual data size " +
+        "to raw file size. Spark uses this ratio to scale up the estimated size, which leads to " +
+        "better estimate of in-memory data size and improves the query optimization (i.e., join " +
+        "strategy). Spark stores a ratio, rather than the data size, so that the table can grow " +
+        "without having to recompute statistics. In case of partitioned table the maximum of " +
+        "these factors is taken. When the factor is already calculated (and stored in the meta " +
+        "store) but the calculation is disabled in a subsequent ANALYZE TABLE (by setting this " +
+        "config to false) then the old factor will be applied as this factor can be removed only " +
+        "by TRUNCATE or a DROP table.")
       .booleanConf
       .createWithDefault(false)
 

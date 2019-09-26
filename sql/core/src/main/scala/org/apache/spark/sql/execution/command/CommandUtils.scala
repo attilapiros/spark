@@ -62,9 +62,8 @@ object CommandUtils extends Logging {
     }
   }
 
-  def calculateTotalSize(
-      spark: SparkSession,
-      catalogTable: CatalogTable): SizeInBytesWithDeserFactor = {
+  def calculateTotalSize(spark: SparkSession, catalogTable: CatalogTable)
+    : SizeInBytesWithDeserFactor = {
     val sessionState = spark.sessionState
     if (catalogTable.partitionColumnNames.isEmpty) {
       calculateLocationSize(
@@ -210,15 +209,19 @@ object CommandUtils extends Logging {
           .orElse(Some(CatalogStatistics(sizeInBytes = oldTotalSize, rowCount = newRowCount)))
       }
     }
-    val newDeserFactor = newSizeWithDeserFactor.deserFactor.orElse(oldStats.flatMap(_.deserFactor))
-    newDeserFactor.foreach { deserFactor =>
-       newStats = newStats
-          .map(_.copy(rowCount = newRowCount, deserFactor = newDeserFactor))
+    val oldDeserFactor = oldStats.flatMap(_.deserFactor)
+    val newDeserFactor = newSizeWithDeserFactor.deserFactor.orElse(oldDeserFactor)
+    if (oldDeserFactor != newDeserFactor || newStats.isDefined) {
+      newDeserFactor.foreach { _ =>
+        newStats = newStats
+          .map(_.copy(deserFactor = newDeserFactor))
           .orElse(Some(CatalogStatistics(
             sizeInBytes = oldTotalSize,
-            rowCount = None,
-            deserFactor = newDeserFactor)))
+            deserFactor = newDeserFactor,
+            rowCount = None)))
+      }
     }
+
     newStats
   }
 

@@ -53,4 +53,31 @@ class CommandUtilsSuite extends SparkFunSuite {
       Some(oldStats2), SizeInBytesWithDeserFactor(BigInt(Long.MaxValue) * 2, None), None)
     assert(newStats5.isEmpty)
   }
+
+  test("compareAndGetNewStats with deserialization factor") {
+    val oldStats3 = Some(CatalogStatistics(sizeInBytes = BigInt(1), Some(2), Some(300)))
+    val newStats6 = CommandUtils.compareAndGetNewStats(
+      oldStats3, SizeInBytesWithDeserFactor(BigInt(1), deserFactor = None), Some(300))
+    assert(newStats6.isEmpty,
+      "the old deserFactor should be inherited when its calculation disabled at subsequent runs" +
+        "and it must be empty as no other attribute changed")
+
+    val newStats7 = CommandUtils.compareAndGetNewStats(
+      oldStats3, SizeInBytesWithDeserFactor(BigInt(1), deserFactor = Some(2)), Some(300))
+    assert(newStats7.isEmpty)
+
+    val newStats8 = CommandUtils.compareAndGetNewStats(
+      oldStats3, SizeInBytesWithDeserFactor(BigInt(5), deserFactor = Some(2)), Some(300))
+    assert(newStats8.isDefined &&
+      newStats8.get === CatalogStatistics(BigInt(5), deserFactor = Some(2), None),
+      "sizeInBytes is changed so a new catalog statistics is needed as the rowCount " +
+        "is not changed it is None")
+
+    val newStats9 = CommandUtils.compareAndGetNewStats(
+      oldStats3, SizeInBytesWithDeserFactor(BigInt(1), deserFactor = Some(4)), Some(300))
+    assert(newStats9.isDefined &&
+      newStats9.get === CatalogStatistics(BigInt(1), deserFactor = Some(4), None),
+      "factor is changed so a new catalog statistics is needed as the rowCount " +
+        "is not changed it is None")
+  }
 }

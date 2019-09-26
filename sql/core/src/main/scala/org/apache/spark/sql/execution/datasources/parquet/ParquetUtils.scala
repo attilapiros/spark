@@ -26,19 +26,16 @@ import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.types.StructType
 
 object ParquetUtils {
-  def rawSize(hadoopConf: Configuration, filePath: Path): BigInt = {
-    def add(a: Long, b: Long): Long = a + b
 
-    try {
-      val footer = ParquetFileReader.readFooter(hadoopConf, filePath)
-      footer
-        .getBlocks
-        .stream
-        .mapToLong(_.getColumns.stream.mapToLong(_.getTotalUncompressedSize).reduce(0L, add))
-        .reduce(0L, add)
-    } catch {
-      case _: IOException => BigInt(0)
-    }
+  def rawSize(hadoopConf: Configuration, filePath: Path): BigInt = try {
+    val footer = ParquetFileReader.readFooter(hadoopConf, filePath)
+    footer
+      .getBlocks
+      .stream
+      .mapToLong(_.getColumns.stream.mapToLong(_.getTotalUncompressedSize).sum())
+      .sum()
+  } catch {
+    case _: IOException => BigInt(0)
   }
 
   def inferSchema(
