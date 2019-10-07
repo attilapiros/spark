@@ -20,11 +20,13 @@ package org.apache.spark.network.shuffle;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
+import java.util.AbstractMap.SimpleEntry;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
@@ -353,6 +355,12 @@ public class ExternalShuffleBlockResolver {
       }
     }
     return numRemovedBlocks;
+  }
+
+  public Map<String, String[]> getLocalDirs(String appId, String[] execIds) {
+    return Arrays.stream(execIds)
+      .map(exec -> new SimpleEntry<>(exec, executors.get(new AppExecId(appId, exec)).localDirs))
+      .collect(Collectors.toMap(SimpleEntry::getKey, SimpleEntry::getValue));
   }
 
   /** Simply encodes an executor's full ID, which is appId + execId. */

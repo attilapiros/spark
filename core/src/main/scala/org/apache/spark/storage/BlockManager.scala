@@ -18,7 +18,7 @@
 package org.apache.spark.storage
 
 import java.io._
-import java.lang.ref.{ReferenceQueue => JReferenceQueue, WeakReference}
+import java.lang.ref.{WeakReference, ReferenceQueue => JReferenceQueue}
 import java.nio.ByteBuffer
 import java.nio.channels.Channels
 import java.util.Collections
@@ -34,9 +34,11 @@ import scala.util.control.NonFatal
 
 import com.codahale.metrics.{MetricRegistry, MetricSet}
 import com.google.common.cache.CacheBuilder
+import com.google.common.util.concurrent.FutureCallback
+import java.util
 import org.apache.commons.io.IOUtils
-
 import org.apache.spark._
+
 import org.apache.spark.executor.DataReadMethod
 import org.apache.spark.internal.Logging
 import org.apache.spark.internal.config
@@ -1007,19 +1009,31 @@ private[spark] class BlockManager(
     None
   }
 
-  private[spark] def getHostLocalDirs(executorIds: Array[String])
-      : scala.collection.Map[String, Array[String]] = synchronized {
+  private[spark] def getCachedHostLocalDirs()
+      : scala.collection.Map[String, Array[String]] = synchronized(executorIdToLocalDirsCache) {
     import scala.collection.JavaConverters._
-    val cachedItems = executorIdToLocalDirsCache.getAllPresent(executorIds.toIterable.asJava)
-    if (cachedItems.size < executorIds.length) {
-      val notCachedItems = master
-        .getHostLocalDirs(executorIds.filterNot(cachedItems.containsKey))
-      executorIdToLocalDirsCache.putAll(notCachedItems.asJava)
-      notCachedItems ++ cachedItems.asScala
-    } else {
-      cachedItems.asScala
+    return executorIdToLocalDirsCache.asMap().asScala
+  }
+
+  private[spark] def getHostLocalDirs(
+      executorIds: Array[String],
+      callback: FutureCallback[java.util.Map[String, Array[String]]])
+      : Unit = synchronized(executorIdToLocalDirsCache) {
+    externalBlockStoreClient.foreach { externalBlockStoreClient =>
+      externalBlockStoreClient.getHostLocalDirs(
+        blockManagerId.host,
+        externalShuffleServicePort,
+        executorIds,
+        new FutureCallback[java.util.Map[String, Array[String]]] {
+          override def onSuccess(result: util.Map[String, Array[String]]): Unit = {
+            executorIdToLocalDirsCache.putAll(result)
+            callback.onSuccess(result)
+          }
+          override def onFailure(t: Throwable): Unit = callback.onFailure(t)
+        })
     }
   }
+
 
   /**
    * Reads the block from the local directories of another executor which runs on the same host.

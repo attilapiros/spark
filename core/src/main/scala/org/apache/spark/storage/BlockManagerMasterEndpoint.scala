@@ -109,9 +109,6 @@ class BlockManagerMasterEndpoint(
     case GetLocationsAndStatus(blockId, requesterHost) =>
       context.reply(getLocationsAndStatus(blockId, requesterHost))
 
-    case GetLocalDirs(executorIds) =>
-      context.reply(getLocalDirs(executorIds))
-
     case GetLocationsMultipleBlockIds(blockIds) =>
       context.reply(getLocationsMultipleBlockIds(blockIds))
 
@@ -511,13 +508,6 @@ class BlockManagerMasterEndpoint(
 
   private def getLocations(blockId: BlockId): Seq[BlockManagerId] = {
     if (blockLocations.containsKey(blockId)) blockLocations.get(blockId).toSeq else Seq.empty
-  }
-
-  private def getLocalDirs(executorIds: Array[String]): Map[String, Array[String]] = {
-    executorIds
-      .map { id => id -> executorIdToLocalDirs.getIfPresent(id) }
-      .filter(_._2 != null)
-      .toMap
   }
 
   private def getLocationsAndStatus(
