@@ -208,16 +208,16 @@ public class ExternalBlockStoreClient extends BlockStoreClient {
         try {
           sendGetHostLocalDirs(host, port, getLocalDirsMessage, callback);
         } catch(Exception e) {
-            if (i < MAX_ATTEMPTS) {
-              logger.error("Failed to get the local dirs from the external shuffle server, "
-                + "will retry " + (MAX_ATTEMPTS - i) + " more times after waiting "
-                + SLEEP_TIME_SECS + " seconds...", e);
-              Uninterruptibles.sleepUninterruptibly(SLEEP_TIME_SECS, TimeUnit.SECONDS);
-            } else {
-              logger.error("Unable to get the local dirs from the external shuffle server due to: ",
-                e);
-              callback.onFailure(e);
-            }
+          if (i < MAX_ATTEMPTS) {
+            logger.error("Failed to get the local dirs from the external shuffle server, "
+              + "will retry " + (MAX_ATTEMPTS - i) + " more times after waiting "
+              + SLEEP_TIME_SECS + " seconds...", e);
+            Uninterruptibles.sleepUninterruptibly(SLEEP_TIME_SECS, TimeUnit.SECONDS);
+          } else {
+            logger.error("Unable to get the local dirs from the external shuffle server due to: ",
+              e);
+            callback.onFailure(e);
+          }
         }
       }
     });
