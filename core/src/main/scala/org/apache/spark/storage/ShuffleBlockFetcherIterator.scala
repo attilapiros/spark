@@ -25,13 +25,12 @@ import javax.annotation.concurrent.GuardedBy
 import scala.collection.mutable
 import scala.collection.mutable.{ArrayBuffer, HashMap, HashSet, LinkedHashMap, Queue}
 
-import com.google.common.util.concurrent.FutureCallback
-import java.util
 import org.apache.commons.io.IOUtils
-import org.apache.spark.{SparkException, TaskContext}
 
+import org.apache.spark.{SparkException, TaskContext}
 import org.apache.spark.internal.Logging
 import org.apache.spark.network.buffer.{FileSegmentManagedBuffer, ManagedBuffer}
+import org.apache.spark.network.client.AsyncResponseCallback
 import org.apache.spark.network.shuffle._
 import org.apache.spark.network.util.TransportConf
 import org.apache.spark.shuffle.{FetchFailedException, ShuffleReadMetricsReporter}
@@ -64,8 +63,6 @@ import org.apache.spark.util.{CompletionIterator, TaskCompletionListener, Utils}
  * @param maxReqSizeShuffleToMem max size (in bytes) of a request that can be shuffled to memory.
  * @param detectCorrupt whether to detect any corruption in fetched blocks.
  * @param shuffleMetrics used to report shuffle metrics.
- * @param enableHostLocalDiskReading whether to read disk of a host local block manager (or fetch
- *                                   the block as a remote block over the network)
  */
 private[spark]
 final class ShuffleBlockFetcherIterator(
@@ -80,8 +77,7 @@ final class ShuffleBlockFetcherIterator(
     maxReqSizeShuffleToMem: Long,
     detectCorrupt: Boolean,
     detectCorruptUseExtraMemory: Boolean,
-    shuffleMetrics: ShuffleReadMetricsReporter,
-    enableHostLocalDiskReading: Boolean = true)
+    shuffleMetrics: ShuffleReadMetricsReporter)
   extends Iterator[(BlockId, InputStream)] with DownloadFileManager with Logging {
 
   import ShuffleBlockFetcherIterator._
@@ -113,7 +109,7 @@ final class ShuffleBlockFetcherIterator(
     LinkedHashMap[BlockManagerId, Seq[(BlockId, Long, Int)]]()
 
   /** Host local blocks to fetch, excluding zero-sized blocks. */
-  private[this] val hostLocalBlocks = scala.collection.mutable.LinkedHashSet[BlockId]()
+  private[this] val hostLocalBlocks = scala.collection.mutable.LinkedHashSet[(BlockId, Int)]()
 
   /**
    * A queue to hold our results. This turns the asynchronous model provided by
@@ -293,18 +289,21 @@ final class ShuffleBlockFetcherIterator(
     var remoteBlockBytes = 0L
     var numRemoteBlocks = 0
 
+    val hostLocalDirReadingEnabled =
+      blockManager.hostLocalDirManager != null && blockManager.hostLocalDirManager.isDefined
+
     for ((address, blockInfos) <- blocksByAddress) {
       numBlocksToFetch += blockInfos.size
       if (address.executorId == blockManager.blockManagerId.executorId) {
         checkBlockSizes(blockInfos)
         localBlocks ++= blockInfos.map(info => (info._1, info._3))
         localBlockBytes += blockInfos.map(_._2).sum
-      } else if (enableHostLocalDiskReading && address.host == blockManager.blockManagerId.host) {
+      } else if (hostLocalDirReadingEnabled && address.host == blockManager.blockManagerId.host) {
         // because of STORAGE_LOCAL_DISK_BY_EXECUTORS_CACHE_SIZE it can happen there is no
         // local dir found for some of the blocks then those blocks will be fetched remotely
         checkBlockSizes(blockInfos)
         hostLocalBlocksByExecutor += address -> blockInfos
-        hostLocalBlocks ++= blockInfos.map(_._1)
+        hostLocalBlocks ++= blockInfos.map(info => (info._1, info._3))
         hostLocalBlockBytes += blockInfos.map(_._2).sum
       } else {
         numRemoteBlocks += blockInfos.size
@@ -315,7 +314,7 @@ final class ShuffleBlockFetcherIterator(
     val totalBytes = localBlockBytes + remoteBlockBytes
     logInfo(s"Getting $numBlocksToFetch (${Utils.bytesToString(totalBytes)}) non-empty blocks " +
       s"including ${localBlocks.size} (${Utils.bytesToString(localBlockBytes)}) local and " +
-      s"${hostLocalBlocks.size} (${Utils.bytesToString(hostLocalBlockBytes)}) potentially " +
+      s"${hostLocalBlocks.size} (${Utils.bytesToString(hostLocalBlockBytes)}) " +
       s"host-local and $numRemoteBlocks (${Utils.bytesToString(remoteBlockBytes)}) remote blocks")
     collectedRemoteRequests
   }
@@ -401,19 +400,20 @@ final class ShuffleBlockFetcherIterator(
       localDirs: Array[String],
       blockManagerId: BlockManagerId): Boolean = {
     try {
-        val buf = blockManager
-          .getHostLocalShuffleData(blockId.asInstanceOf[ShuffleBlockId], localDirs)
-        buf.retain()
-        results.put(SuccessFetchResult(blockId, mapIndex, blockManagerId,
-          buf.size(), buf, isNetworkReqDone = false))
-        true
-      } catch {
-        case e: Exception =>
-          // If we see an exception, stop immediately.
-          logError(s"Error occurred while fetching local blocks", e)
-          results.put(FailureFetchResult(blockId, mapIndex, blockManagerId, e))
-          false
-      }
+      logDebug(s"Attila fetchHostLocalBlock: $blockId ${localDirs.mkString(",")}")
+      val buf = blockManager
+        .getHostLocalShuffleData(blockId.asInstanceOf[ShuffleBlockId], localDirs)
+      buf.retain()
+      results.put(SuccessFetchResult(blockId, mapIndex, blockManagerId, buf.size(), buf,
+        isNetworkReqDone = false))
+      true
+    } catch {
+      case e: Exception =>
+        // If we see an exception, stop immediately.
+        logError(s"Error occurred while fetching local blocks", e)
+        results.put(FailureFetchResult(blockId, mapIndex, blockManagerId, e))
+        false
+    }
   }
 
   /**
@@ -421,27 +421,27 @@ final class ShuffleBlockFetcherIterator(
    * `ManagedBuffer`'s memory is allocated lazily when we create the input stream, so all we
    * track in-memory are the ManagedBuffer references themselves.
    */
-  private[this] def fetchHostLocalBlocks(): Unit = {
-    logDebug(s"Start fetching host-local blocks: ${hostLocalBlocks.mkString(", ")}")
-    val cachedDirsByExec = blockManager.getCachedHostLocalDirs()
+  private[this] def fetchHostLocalBlocks(hostLocalDirManager: HostLocalDirManager): Unit = {
+    val cachedDirsByExec = hostLocalDirManager.getCachedHostLocalDirs()
     val (hostLocalBlocksWithCachedDirs, hostLocalBlocksWithMissingDirs) =
       hostLocalBlocksByExecutor
-        .map { bmIdWithInfos =>
-          (bmIdWithInfos._1, bmIdWithInfos._2, cachedDirsByExec.get(bmIdWithInfos._1.executorId))
-        }.partition(_._3.isDefined)
+        .map { case (bmId, bmInfos) => (bmId, bmInfos, cachedDirsByExec.get(bmId.executorId)) }
+        .partition(_._3.isDefined)
     val bmId = blockManager.blockManagerId
     val immutableHostLocalBlocksWithoutDirs =
-      hostLocalBlocksWithMissingDirs.map { bmIdWithInfos =>
-        bmIdWithInfos._1 -> bmIdWithInfos._2
+      hostLocalBlocksWithMissingDirs.map { case (bmId, bmInfos, _) =>
+        bmId -> bmInfos
       }.toMap
     if (immutableHostLocalBlocksWithoutDirs.nonEmpty) {
-      blockManager.getHostLocalDirs(
+      logDebug(s"Asynchronous fetching host-local blocks without cached exec dir: " +
+        s"${immutableHostLocalBlocksWithoutDirs.mkString(", ")}")
+      hostLocalDirManager.getHostLocalDirs(
         immutableHostLocalBlocksWithoutDirs.keys.map(_.executorId).toArray,
-        new FutureCallback[java.util.Map[String, Array[String]]] {
-            override def onSuccess(dirs: util.Map[String, Array[String]]): Unit = {
+        new AsyncResponseCallback[java.util.Map[String, Array[String]]] {
+            override def onSuccess(dirs: java.util.Map[String, Array[String]]): Unit = {
               immutableHostLocalBlocksWithoutDirs.foreach { case (bmId, blockInfos) =>
                 blockInfos.takeWhile { case (blockId, _, mapIndex) =>
-                  fetchHostLocalBlock(blockId, mapIndex, dirs(bmId.executorId), bmId)
+                  fetchHostLocalBlock(blockId, mapIndex, dirs.get(bmId.executorId), bmId)
                 }
               }
             }
@@ -453,10 +453,14 @@ final class ShuffleBlockFetcherIterator(
             }
           })
     }
-    hostLocalBlocksWithCachedDirs.foreach { case (_, blockInfos, localDirs) =>
-      blockInfos.foreach { case (blockId, _, mapIndex) =>
-        if (!fetchHostLocalBlock(blockId, mapIndex, localDirs.get, bmId)) {
-            return
+    if (hostLocalBlocksWithCachedDirs.nonEmpty) {
+      logDebug(s"Synchronous fetching host-local blocks with cached exec dir: " +
+          s"${hostLocalBlocksWithCachedDirs.mkString(", ")}")
+      hostLocalBlocksWithCachedDirs.foreach { case (_, blockInfos, localDirs) =>
+        blockInfos.foreach { case (blockId, _, mapIndex) =>
+          if (!fetchHostLocalBlock(blockId, mapIndex, localDirs.get, bmId)) {
+              return
+          }
         }
       }
     }
@@ -485,7 +489,7 @@ final class ShuffleBlockFetcherIterator(
     logDebug(s"Got local blocks in ${Utils.getUsedTimeNs(startTimeNs)}")
 
     if (hostLocalBlocks.nonEmpty) {
-      fetchHostLocalBlocks()
+      blockManager.hostLocalDirManager.foreach(fetchHostLocalBlocks)
     }
   }
 
@@ -522,16 +526,18 @@ final class ShuffleBlockFetcherIterator(
       result match {
         case r @ SuccessFetchResult(blockId, mapIndex, address, size, buf, isNetworkReqDone) =>
           if (address != blockManager.blockManagerId) {
-            numBlocksInFlightPerAddress(address) = numBlocksInFlightPerAddress(address) - 1
-            shuffleMetrics.incRemoteBytesRead(buf.size)
-            if (buf.isInstanceOf[FileSegmentManagedBuffer]) {
-              shuffleMetrics.incRemoteBytesReadToDisk(buf.size)
+            if (hostLocalBlocks.contains(blockId -> mapIndex)) {
+              shuffleMetrics.incLocalBlocksFetched(1)
+              shuffleMetrics.incLocalBytesRead(buf.size)
+            } else {
+              numBlocksInFlightPerAddress(address) = numBlocksInFlightPerAddress(address) - 1
+              shuffleMetrics.incRemoteBytesRead(buf.size)
+              if (buf.isInstanceOf[FileSegmentManagedBuffer]) {
+                shuffleMetrics.incRemoteBytesReadToDisk(buf.size)
+              }
+              shuffleMetrics.incRemoteBlocksFetched(1)
+              bytesInFlight -= size
             }
-            shuffleMetrics.incRemoteBlocksFetched(1)
-            bytesInFlight -= size
-          } else if (!localBlocks.contains(blockId -> mapIndex)) {
-            shuffleMetrics.incLocalBlocksFetched(1)
-            shuffleMetrics.incLocalBytesRead(buf.size)
           }
           if (isNetworkReqDone) {
             reqsInFlight -= 1

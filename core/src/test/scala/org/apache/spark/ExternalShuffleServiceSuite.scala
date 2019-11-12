@@ -99,12 +99,14 @@ class ExternalShuffleServiceSuite extends ShuffleSuite with BeforeAndAfterAll wi
     e.getMessage should include ("Fetch failure will not retry stage due to testing config")
   }
 
-  test("SPARK-27651: host local disk reading avoids external shuffle service on the same node") {
+  test("SPARK-27651: read host local shuffle blocks from disk and avoid remote fetch via network") {
     val confWithHostLocalRead =
       conf.clone.set(config.SHUFFLE_HOST_LOCAL_DISK_READING_ENABLED, true)
+    confWithHostLocalRead.set(config.STORAGE_LOCAL_DISK_BY_EXECUTORS_CACHE_SIZE, 5)
     sc = new SparkContext("local-cluster[2,1,1024]", "test", confWithHostLocalRead)
     sc.getConf.get(config.SHUFFLE_HOST_LOCAL_DISK_READING_ENABLED) should equal(true)
     sc.env.blockManager.externalShuffleServiceEnabled should equal(true)
+    sc.env.blockManager.hostLocalDirManager.isDefined should equal(true)
     sc.env.blockManager.blockStoreClient.getClass should equal(classOf[ExternalBlockStoreClient])
 
     // In a slow machine, one slave may register hundreds of milliseconds ahead of the other one.
@@ -116,19 +118,25 @@ class ExternalShuffleServiceSuite extends ShuffleSuite with BeforeAndAfterAll wi
     TestUtils.waitUntilExecutorsUp(sc, 2, 60000)
 
     val rdd = sc.parallelize(0 until 1000, 10)
-      .map { i => (i, 1) }
+      .map { i => (i % 10, 1) }
       .reduceByKey(_ + _)
 
     rdd.count()
     rdd.count()
 
+
+    // sc.statusTracker.getJobInfo(0).map(_.status().values()(0).values()(0).)
+
     // Invalidate the registered executors, disallowing access to their shuffle blocks (without
     // deleting the actual shuffle files, so we could access them without the shuffle service).
+    // As directories are already cached there is no request to external shuffle service.
     rpcHandler.applicationRemoved(sc.conf.getAppId, false /* cleanupLocalDirs */)
 
-    // Now Spark will not receive FetchFailed as host local blocks are read from the local
+    // Now Spark will not receive FetchFailed as host local blocks are read from the cached local
     // disk directly
     rdd.count()
+
+    rdd.first()._2 should equal(100)
   }
 
   test("SPARK-25888: using external shuffle service fetching disk persisted blocks") {

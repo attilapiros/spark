@@ -17,7 +17,6 @@
 
 package org.apache.spark.network.shuffle;
 
-import org.apache.spark.network.TestUtils;
 import org.junit.Test;
 
 import static org.junit.Assert.*;

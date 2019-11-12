@@ -42,7 +42,7 @@ public class GetLocalDirsForExecutors extends BlockTransferMessage {
 
   @Override
   public int hashCode() {
-    return  Objects.hashCode(appId) * 41 + Arrays.hashCode(execIds);
+    return Objects.hashCode(appId) * 41 + Arrays.hashCode(execIds);
   }
 
   @Override

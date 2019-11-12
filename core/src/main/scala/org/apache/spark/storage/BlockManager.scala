@@ -18,7 +18,7 @@
 package org.apache.spark.storage
 
 import java.io._
-import java.lang.ref.{WeakReference, ReferenceQueue => JReferenceQueue}
+import java.lang.ref.{ReferenceQueue => JReferenceQueue, WeakReference}
 import java.nio.ByteBuffer
 import java.nio.channels.Channels
 import java.util.Collections
@@ -34,11 +34,9 @@ import scala.util.control.NonFatal
 
 import com.codahale.metrics.{MetricRegistry, MetricSet}
 import com.google.common.cache.CacheBuilder
-import com.google.common.util.concurrent.FutureCallback
-import java.util
 import org.apache.commons.io.IOUtils
-import org.apache.spark._
 
+import org.apache.spark._
 import org.apache.spark.executor.DataReadMethod
 import org.apache.spark.internal.Logging
 import org.apache.spark.internal.config
@@ -47,7 +45,7 @@ import org.apache.spark.memory.{MemoryManager, MemoryMode}
 import org.apache.spark.metrics.source.Source
 import org.apache.spark.network._
 import org.apache.spark.network.buffer.{FileSegmentManagedBuffer, ManagedBuffer}
-import org.apache.spark.network.client.StreamCallbackWithID
+import org.apache.spark.network.client.{AsyncResponseCallback, StreamCallbackWithID}
 import org.apache.spark.network.netty.SparkTransportConf
 import org.apache.spark.network.shuffle._
 import org.apache.spark.network.shuffle.protocol.ExecutorShuffleInfo
@@ -115,6 +113,45 @@ private[spark] class ByteBufferBlockData(
   }
 
 }
+
+private[spark] class HostLocalDirManager(
+    cacheSize: Int,
+    externalBlockStoreClient: ExternalBlockStoreClient,
+    host: String,
+    externalShuffleServicePort: Int) extends Logging {
+
+  private val executorIdToLocalDirsCache =
+    CacheBuilder
+      .newBuilder()
+      .maximumSize(cacheSize)
+      .build[String, Array[String]]()
+
+  private[spark] def getCachedHostLocalDirs()
+    : scala.collection.Map[String, Array[String]] = synchronized {
+    import scala.collection.JavaConverters._
+    return executorIdToLocalDirsCache.asMap().asScala
+  }
+
+  private[spark] def getHostLocalDirs(
+      executorIds: Array[String],
+      callback: AsyncResponseCallback[java.util.Map[String, Array[String]]]): Unit = synchronized {
+    externalBlockStoreClient.getHostLocalDirs(
+      host,
+      externalShuffleServicePort,
+      executorIds,
+      new AsyncResponseCallback[java.util.Map[String, Array[String]]] {
+
+        override def onSuccess(result: java.util.Map[String, Array[String]]): Unit = {
+          executorIdToLocalDirsCache.putAll(result)
+          logInfo(s"Attila: onSuccess $result")
+          callback.onSuccess(result)
+        }
+
+        override def onFailure(t: Throwable): Unit = callback.onFailure(t)
+      })
+  }
+}
+
 
 /**
  * Manager running on every node (driver and executors) which provides interfaces for putting and
@@ -209,11 +246,7 @@ private[spark] class BlockManager(
     new BlockManager.RemoteBlockDownloadFileManager(this)
   private val maxRemoteBlockToMem = conf.get(config.MAX_REMOTE_BLOCK_SIZE_FETCH_TO_MEM)
 
-  private val executorIdToLocalDirsCache =
-    CacheBuilder
-      .newBuilder()
-      .maximumSize(conf.get(config.STORAGE_LOCAL_DISK_BY_EXECUTORS_CACHE_SIZE))
-      .build[String, Array[String]]()
+  var hostLocalDirManager: Option[HostLocalDirManager] = None
 
   /**
    * Abstraction for storing blocks from bytes, whether they start in memory or on disk.
@@ -441,6 +474,19 @@ private[spark] class BlockManager(
     if (externalShuffleServiceEnabled && !blockManagerId.isDriver) {
       registerWithExternalShuffleServer()
     }
+
+    hostLocalDirManager =
+      if (conf.get(config.SHUFFLE_HOST_LOCAL_DISK_READING_ENABLED)) {
+        externalBlockStoreClient.map { blockStoreClient =>
+          new HostLocalDirManager(
+            conf.get(config.STORAGE_LOCAL_DISK_BY_EXECUTORS_CACHE_SIZE),
+            blockStoreClient,
+            blockManagerId.host,
+            externalShuffleServicePort)
+        }
+      } else {
+        None
+      }
 
     logInfo(s"Initialized BlockManager: $blockManagerId")
   }
@@ -1008,32 +1054,6 @@ private[spark] class BlockManager(
     logDebug(s"Block $blockId not found")
     None
   }
-
-  private[spark] def getCachedHostLocalDirs()
-      : scala.collection.Map[String, Array[String]] = synchronized(executorIdToLocalDirsCache) {
-    import scala.collection.JavaConverters._
-    return executorIdToLocalDirsCache.asMap().asScala
-  }
-
-  private[spark] def getHostLocalDirs(
-      executorIds: Array[String],
-      callback: FutureCallback[java.util.Map[String, Array[String]]])
-      : Unit = synchronized(executorIdToLocalDirsCache) {
-    externalBlockStoreClient.foreach { externalBlockStoreClient =>
-      externalBlockStoreClient.getHostLocalDirs(
-        blockManagerId.host,
-        externalShuffleServicePort,
-        executorIds,
-        new FutureCallback[java.util.Map[String, Array[String]]] {
-          override def onSuccess(result: util.Map[String, Array[String]]): Unit = {
-            executorIdToLocalDirsCache.putAll(result)
-            callback.onSuccess(result)
-          }
-          override def onFailure(t: Throwable): Unit = callback.onFailure(t)
-        })
-    }
-  }
-
 
   /**
    * Reads the block from the local directories of another executor which runs on the same host.

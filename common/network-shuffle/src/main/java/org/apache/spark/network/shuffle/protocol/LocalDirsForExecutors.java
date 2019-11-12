@@ -53,7 +53,6 @@ public class LocalDirsForExecutors extends BlockTransferMessage {
     this.allLocalDirs = allLocalDirs;
   }
 
-
   @Override
   protected Type type() { return Type.LOCAL_DIRS_FOR_EXECUTORS; }
 
