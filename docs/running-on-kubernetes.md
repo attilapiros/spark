@@ -1120,8 +1120,8 @@ See the [configuration page](configuration.html) for information on Spark config
   <td>(none)</td>
   <td>
     Path to store files at the spark submit side in cluster mode. For example:
-    <code>spark.kubernetes.file.upload.path=s3a://<s3-bucket>/path</code>
-    File should specified as <code>file://path/to/file </code> or absolute path.
+    <code>spark.kubernetes.file.upload.path=s3a://&lt;s3-bucket&gt;/path</code>
+    File should specified as <code> file://path/to/file </code> or absolute path.
   </td>
 </tr>
 </table>
