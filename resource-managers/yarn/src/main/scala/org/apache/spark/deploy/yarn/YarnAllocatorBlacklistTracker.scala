@@ -54,7 +54,6 @@ private[spark] class YarnAllocatorBlacklistTracker(
   extends Logging {
 
   private var allNodes = Map.empty[String, NodeState]
-  private var allRunningNodes = Set.empty[String]
 
   private val blacklistTimeoutMillis = BlacklistTracker.getBlacklistTimeout(sparkConf)
 
@@ -119,6 +118,8 @@ private[spark] class YarnAllocatorBlacklistTracker(
 
   def isAllNodeBlacklisted: Boolean = {
     refreshYarnNodes()
+    val allRunningNodes = allNodes.filter { case (_, state) => state.equals(RUNNING) }
+      .keySet
     val allBlacklisted = allRunningNodes.diff(currentBlacklistedYarnNodes).isEmpty
     if (allBlacklisted) {
       val currentTime = System.currentTimeMillis()
@@ -175,8 +176,6 @@ private[spark] class YarnAllocatorBlacklistTracker(
   def refreshYarnNodes(): Unit = {
     allNodes = yarnClient.getNodeReports()
       .asScala.map(node => (node.getNodeId.getHost, node.getNodeState)).toMap
-    allRunningNodes = allNodes.filter { case (_, state) => state.equals(RUNNING) }
-      .keySet
   }
 }
 
