@@ -23,7 +23,7 @@ import java.util.UUID
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 
-import org.mockito.{Mock, MockitoAnnotations}
+import org.mockito.{ArgumentCaptor, Mock, MockitoAnnotations}
 import org.mockito.Answers.RETURNS_SMART_NULLS
 import org.mockito.ArgumentMatchers.{any, anyInt, anyLong}
 import org.mockito.Mockito._
@@ -35,6 +35,7 @@ import org.apache.spark.memory.{TaskMemoryManager, TestMemoryManager}
 import org.apache.spark.serializer.{JavaSerializer, SerializerInstance, SerializerManager}
 import org.apache.spark.shuffle.IndexShuffleBlockResolver
 import org.apache.spark.shuffle.api.ShuffleExecutorComponents
+import org.apache.spark.shuffle.api.metadata.MapOutputCommitMessage
 import org.apache.spark.shuffle.sort.io.LocalDiskShuffleExecutorComponents
 import org.apache.spark.storage._
 import org.apache.spark.util.Utils
@@ -143,9 +144,13 @@ class BypassMergeSortShuffleWriterSuite extends SparkFunSuite with BeforeAndAfte
       taskContext.taskMetrics().shuffleWriteMetrics,
       shuffleExecutorComponents)
 
-    writer.write(Iterator.empty)
-    writer.stop( /* success = */ true)
-    assert(writer.getMapOutputCommitMessage.getPartitionLengths.sum === 0)
+    val mockWriter = spy(writer)
+    val argCaptor = ArgumentCaptor.forClass(classOf[MapOutputCommitMessage])
+      .asInstanceOf[ArgumentCaptor[MapOutputCommitMessage]]
+    mockWriter.write(Iterator.empty)
+    mockWriter.stop( /* success = */ true)
+    verify(mockWriter).setTaskResult(argCaptor.capture())
+    assert(argCaptor.getValue.getPartitionLengths.sum === 0)
     assert(outputFile.exists())
     assert(outputFile.length() === 0)
     assert(temporaryFilesCreated.isEmpty)
@@ -168,12 +173,17 @@ class BypassMergeSortShuffleWriterSuite extends SparkFunSuite with BeforeAndAfte
         transferConf,
         taskContext.taskMetrics().shuffleWriteMetrics,
         shuffleExecutorComponents)
-      writer.write(records)
-      writer.stop( /* success = */ true)
+      val mockWriter = spy(writer)
+      val argCaptor = ArgumentCaptor.forClass(classOf[MapOutputCommitMessage])
+        .asInstanceOf[ArgumentCaptor[MapOutputCommitMessage]]
+      mockWriter.write(records)
+      mockWriter.stop( /* success = */ true)
       assert(temporaryFilesCreated.nonEmpty)
-      assert(writer.getMapOutputCommitMessage.getPartitionLengths.sum === outputFile.length())
+      verify(mockWriter).setTaskResult(argCaptor.capture())
+      val mapOutputCommitMessage = argCaptor.getValue()
+      assert(mapOutputCommitMessage.getPartitionLengths.sum === outputFile.length())
       // should be 4 zero length files
-      assert(writer.getMapOutputCommitMessage.getPartitionLengths.count(_ == 0L) === 4)
+      assert(mapOutputCommitMessage.getPartitionLengths.count(_ == 0L) === 4)
       assert(temporaryFilesCreated.count(_.exists()) === 0) // check that temp files were deleted
       val shuffleWriteMetrics = taskContext.taskMetrics().shuffleWriteMetrics
       assert(shuffleWriteMetrics.bytesWritten === outputFile.length())

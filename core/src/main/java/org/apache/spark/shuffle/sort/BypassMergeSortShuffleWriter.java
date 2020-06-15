@@ -76,7 +76,7 @@ import org.apache.spark.util.Utils;
  * <p>
  * There have been proposals to completely remove this code path; see SPARK-6026 for details.
  */
-final class BypassMergeSortShuffleWriter<K, V> extends ShuffleWriter<K, V> {
+class BypassMergeSortShuffleWriter<K, V> extends ShuffleWriter<K, V> {
 
   private static final Logger logger = LoggerFactory.getLogger(BypassMergeSortShuffleWriter.class);
 
@@ -95,7 +95,6 @@ final class BypassMergeSortShuffleWriter<K, V> extends ShuffleWriter<K, V> {
   private DiskBlockObjectWriter[] partitionWriters;
   private FileSegment[] partitionWriterSegments;
   @Nullable private MapTaskResult taskResult;
-  private MapOutputCommitMessage mapOutputCommitMessage;
 
   /**
    * Are we in the process of stopping? Because map tasks can call stop() with success = true
@@ -125,6 +124,15 @@ final class BypassMergeSortShuffleWriter<K, V> extends ShuffleWriter<K, V> {
     this.shuffleExecutorComponents = shuffleExecutorComponents;
   }
 
+  protected void setTaskResult(MapOutputCommitMessage mapOutputCommitMessage) {
+    taskResult = new MapTaskResult(
+        MapStatus$.MODULE$.apply(
+            blockManager.shuffleServerId(),
+            mapOutputCommitMessage.getPartitionLengths(),
+            mapId),
+        OptionConverters.toScala(mapOutputCommitMessage.getMapOutputMetadata()));
+  }
+
   @Override
   public void write(Iterator<Product2<K, V>> records) throws IOException {
     assert (partitionWriters == null);
@@ -132,13 +140,7 @@ final class BypassMergeSortShuffleWriter<K, V> extends ShuffleWriter<K, V> {
         .createMapOutputWriter(shuffleId, mapId, numPartitions);
     try {
       if (!records.hasNext()) {
-        mapOutputCommitMessage = mapOutputWriter.commitAllPartitions();
-        taskResult = new MapTaskResult(
-            MapStatus$.MODULE$.apply(
-                blockManager.shuffleServerId(),
-                mapOutputCommitMessage.getPartitionLengths(),
-                mapId),
-            OptionConverters.toScala(mapOutputCommitMessage.getMapOutputMetadata()));
+        setTaskResult(mapOutputWriter.commitAllPartitions());
         return;
       }
       final SerializerInstance serInstance = serializer.newInstance();
@@ -170,13 +172,7 @@ final class BypassMergeSortShuffleWriter<K, V> extends ShuffleWriter<K, V> {
         }
       }
 
-      mapOutputCommitMessage = writePartitionedData(mapOutputWriter);
-      taskResult = new MapTaskResult(
-          MapStatus$.MODULE$.apply(
-              blockManager.shuffleServerId(),
-              mapOutputCommitMessage.getPartitionLengths(),
-              mapId),
-          OptionConverters.toScala(mapOutputCommitMessage.getMapOutputMetadata()));
+      setTaskResult(writePartitionedData(mapOutputWriter));
     } catch (Exception e) {
       try {
         mapOutputWriter.abort(e);
@@ -186,11 +182,6 @@ final class BypassMergeSortShuffleWriter<K, V> extends ShuffleWriter<K, V> {
       }
       throw e;
     }
-  }
-
-  @VisibleForTesting
-  MapOutputCommitMessage getMapOutputCommitMessage() {
-    return mapOutputCommitMessage;
   }
 
   /**
