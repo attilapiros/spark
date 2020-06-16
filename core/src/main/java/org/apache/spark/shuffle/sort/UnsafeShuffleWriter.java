@@ -280,12 +280,8 @@ public class UnsafeShuffleWriter<K, V> extends ShuffleWriter<K, V> {
       if (maybeSingleFileWriter.isPresent()) {
         // Here, we don't need to perform any metrics updates because the bytes written to this
         // output file would have already been counted as shuffle bytes written.
-        Optional<MapOutputMetadata> maybeMetadata =
-            maybeSingleFileWriter.get().transferMapSpillFile(
-                spills[0].file, spills[0].partitionLengths);
-        mapOutputCommitMessage = maybeMetadata.map(
-            metadata -> MapOutputCommitMessage.of(spills[0].partitionLengths, metadata))
-            .orElse(MapOutputCommitMessage.of(spills[0].partitionLengths));
+        mapOutputCommitMessage = maybeSingleFileWriter.get()
+          .transferMapSpillFile(spills[0].file, spills[0].partitionLengths);
       } else {
         mapOutputCommitMessage = mergeSpillsUsingStandardWriter(spills);
       }
@@ -297,7 +293,7 @@ public class UnsafeShuffleWriter<K, V> extends ShuffleWriter<K, V> {
 
   private MapOutputCommitMessage mergeSpillsUsingStandardWriter(SpillInfo[] spills)
       throws IOException {
-    MapOutputCommitMessage commitMessage;
+    final MapOutputCommitMessage commitMessage;
     final boolean compressionEnabled = (boolean) sparkConf.get(package$.MODULE$.SHUFFLE_COMPRESS());
     final CompressionCodec compressionCodec = CompressionCodec$.MODULE$.createCodec(sparkConf);
     final boolean fastMergeEnabled =
