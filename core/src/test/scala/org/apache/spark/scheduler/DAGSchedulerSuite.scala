@@ -25,6 +25,9 @@ import scala.annotation.meta.param
 import scala.collection.mutable.{ArrayBuffer, HashMap, HashSet, Map}
 import scala.util.control.NonFatal
 
+import org.mockito.Mockito.spy
+import org.mockito.Mockito.times
+import org.mockito.Mockito.verify
 import org.scalatest.concurrent.{Signaler, ThreadSignaler, TimeLimits}
 import org.scalatest.exceptions.TestFailedException
 import org.scalatest.time.SpanSugar._
@@ -118,6 +121,14 @@ class MyRDD(
   }
 
   override def toString: String = "DAGSchedulerSuiteRDD " + id
+}
+
+class MyMapOutputTrackerMaster(
+    conf: SparkConf,
+    broadcastManager: BroadcastManager) extends MapOutputTrackerMaster(conf, broadcastManager, true) {
+  override def sendTracker(message: Any): Unit = {
+    // no-op, just so we can stop this to avoid leaking threads
+  }
 }
 
 class DAGSchedulerSuiteDummyException extends Exception
@@ -293,11 +304,7 @@ class DAGSchedulerSuite extends SparkFunSuite with LocalSparkContext with TimeLi
     results.clear()
     securityMgr = new SecurityManager(conf)
     broadcastManager = new BroadcastManager(true, conf, securityMgr)
-    mapOutputTracker = new MapOutputTrackerMaster(conf, broadcastManager, true) {
-      override def sendTracker(message: Any): Unit = {
-        // no-op, just so we can stop this to avoid leaking threads
-      }
-    }
+    mapOutputTracker = spy(new MyMapOutputTrackerMaster(conf, broadcastManager))
     scheduler = new DAGScheduler(
       sc,
       taskScheduler,
@@ -566,9 +573,12 @@ class DAGSchedulerSuite extends SparkFunSuite with LocalSparkContext with TimeLi
     assert(mapStatuses.count(s => s != null && s.location.executorId == "hostB-exec") === 1)
 
     // Now a fetch failure from the lost executor occurs
-    complete(taskSets(1), Seq(
-      (FetchFailed(makeBlockManagerId("hostA"), shuffleId, 0L, 0, 0, "ignored"), null)
-    ))
+    (0 to 1).foreach { index =>
+      complete(taskSets(1), Seq(
+        (FetchFailed(makeBlockManagerId("hostA"), shuffleId, 0L, index, 0, "ignored"), null)
+      ))
+    }
+    verify(mapOutputTracker, times(1)).removeOutputsOnExecutor("hostA-exec")
 
     // Shuffle files for hostA-exec should be lost
     assert(mapStatuses.count(_ != null) === 1)
