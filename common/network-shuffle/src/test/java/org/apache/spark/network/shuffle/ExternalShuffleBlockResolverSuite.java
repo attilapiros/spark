@@ -144,22 +144,4 @@ public class ExternalShuffleBlockResolverSuite {
     assertEquals(shuffleInfo, mapper.readValue(legacyShuffleJson, ExecutorShuffleInfo.class));
   }
 
-  @Test
-  public void testNormalizeAndInternPathname() {
-    assertPathsMatch("/foo", "bar", "baz", "/foo/bar/baz");
-    assertPathsMatch("//foo/", "bar/", "//baz", "/foo/bar/baz");
-    assertPathsMatch("foo", "bar", "baz///", "foo/bar/baz");
-    assertPathsMatch("/foo/", "/bar//", "/baz", "/foo/bar/baz");
-    assertPathsMatch("/", "", "", "/");
-    assertPathsMatch("/", "/", "/", "/");
-  }
-
-  private void assertPathsMatch(String p1, String p2, String p3, String expectedPathname) {
-    String normPathname =
-      ExecutorDiskUtils.createNormalizedInternedPathname(p1, p2, p3);
-    assertEquals(expectedPathname, normPathname);
-    File file = new File(normPathname);
-    String returnedPath = file.getPath();
-    assertTrue(normPathname == returnedPath);
-  }
 }
