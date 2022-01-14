@@ -25,6 +25,7 @@ import org.roaringbitmap.RoaringBitmap
 
 import org.apache.spark.SparkEnv
 import org.apache.spark.internal.config
+import org.apache.spark.shuffle.api.metadata.MapOutputMetadata
 import org.apache.spark.storage.BlockManagerId
 import org.apache.spark.util.Utils
 
@@ -44,6 +45,8 @@ private[spark] sealed trait MapStatus extends ShuffleOutputStatus {
   def location: BlockManagerId
 
   def updateLocation(newLoc: BlockManagerId): Unit
+
+  def metadata: MapOutputMetadata
 
   /**
    * Estimated size for the reduce block, in bytes.
@@ -74,11 +77,12 @@ private[spark] object MapStatus {
   def apply(
       loc: BlockManagerId,
       uncompressedSizes: Array[Long],
-      mapTaskId: Long): MapStatus = {
+      mapTaskId: Long,
+      metadata: MapOutputMetadata = null): MapStatus = {
     if (uncompressedSizes.length > minPartitionsToUseHighlyCompressMapStatus) {
-      HighlyCompressedMapStatus(loc, uncompressedSizes, mapTaskId)
+      HighlyCompressedMapStatus(loc, uncompressedSizes, mapTaskId, metadata)
     } else {
-      new CompressedMapStatus(loc, uncompressedSizes, mapTaskId)
+      new CompressedMapStatus(loc, uncompressedSizes, mapTaskId, metadata)
     }
   }
 
@@ -123,14 +127,19 @@ private[spark] object MapStatus {
 private[spark] class CompressedMapStatus(
     private[this] var loc: BlockManagerId,
     private[this] var compressedSizes: Array[Byte],
-    private[this] var _mapTaskId: Long)
+    private[this] var _mapTaskId: Long,
+    private[this] var _metadata: MapOutputMetadata)
   extends MapStatus with Externalizable {
 
   // For deserialization only
-  protected def this() = this(null, null.asInstanceOf[Array[Byte]], -1)
+  protected def this() = this(null, null.asInstanceOf[Array[Byte]], -1, null)
 
-  def this(loc: BlockManagerId, uncompressedSizes: Array[Long], mapTaskId: Long) = {
-    this(loc, uncompressedSizes.map(MapStatus.compressSize), mapTaskId)
+  def this(
+      loc: BlockManagerId,
+      uncompressedSizes: Array[Long],
+      mapTaskId: Long,
+      mapOutputMetadata: MapOutputMetadata = null) = {
+    this(loc, uncompressedSizes.map(MapStatus.compressSize), mapTaskId, mapOutputMetadata)
   }
 
   override def location: BlockManagerId = loc
@@ -145,11 +154,16 @@ private[spark] class CompressedMapStatus(
 
   override def mapId: Long = _mapTaskId
 
+  override def metadata: MapOutputMetadata = _metadata
+
   override def writeExternal(out: ObjectOutput): Unit = Utils.tryOrIOException {
     loc.writeExternal(out)
     out.writeInt(compressedSizes.length)
     out.write(compressedSizes)
     out.writeLong(_mapTaskId)
+    if (_metadata != null) {
+      SparkEnv.get.shuffleManager.mapOutputMetadataExternalizer.writeExternal(_metadata, out)
+    }
   }
 
   override def readExternal(in: ObjectInput): Unit = Utils.tryOrIOException {
@@ -158,6 +172,7 @@ private[spark] class CompressedMapStatus(
     compressedSizes = new Array[Byte](len)
     in.readFully(compressedSizes)
     _mapTaskId = in.readLong()
+    _metadata = SparkEnv.get.shuffleManager.mapOutputMetadataExternalizer.readExternal(in)
   }
 }
 
@@ -179,15 +194,19 @@ private[spark] class HighlyCompressedMapStatus private (
     private[this] var emptyBlocks: RoaringBitmap,
     private[this] var avgSize: Long,
     private[this] var hugeBlockSizes: scala.collection.Map[Int, Byte],
-    private[this] var _mapTaskId: Long)
+    private[this] var _mapTaskId: Long,
+    private[this] var _metadata: MapOutputMetadata)
   extends MapStatus with Externalizable {
+
+  override def metadata: MapOutputMetadata = _metadata
 
   // loc could be null when the default constructor is called during deserialization
   require(loc == null || avgSize > 0 || hugeBlockSizes.size > 0
     || numNonEmptyBlocks == 0 || _mapTaskId > 0,
     "Average size can only be zero for map stages that produced no output")
 
-  protected def this() = this(null, -1, null, -1, null, -1)  // For deserialization only
+  protected def this() =
+    this(null, -1, null, -1, null, -1, null)  // For deserialization only
 
   override def location: BlockManagerId = loc
 
@@ -219,6 +238,9 @@ private[spark] class HighlyCompressedMapStatus private (
       out.writeByte(kv._2)
     }
     out.writeLong(_mapTaskId)
+    if (_metadata != null) {
+      SparkEnv.get.shuffleManager.mapOutputMetadataExternalizer.writeExternal(_metadata, out)
+    }
   }
 
   override def readExternal(in: ObjectInput): Unit = Utils.tryOrIOException {
@@ -236,6 +258,7 @@ private[spark] class HighlyCompressedMapStatus private (
     }
     hugeBlockSizes = hugeBlockSizesImpl
     _mapTaskId = in.readLong()
+    _metadata = SparkEnv.get.shuffleManager.mapOutputMetadataExternalizer.readExternal(in)
   }
 }
 
@@ -243,7 +266,8 @@ private[spark] object HighlyCompressedMapStatus {
   def apply(
       loc: BlockManagerId,
       uncompressedSizes: Array[Long],
-      mapTaskId: Long): HighlyCompressedMapStatus = {
+      mapTaskId: Long,
+      metadata: MapOutputMetadata = null): HighlyCompressedMapStatus = {
     // We must keep track of which blocks are empty so that we don't report a zero-sized
     // block as being non-empty (or vice-versa) when using the average block size.
     var i = 0
@@ -310,6 +334,6 @@ private[spark] object HighlyCompressedMapStatus {
     emptyBlocks.trim()
     emptyBlocks.runOptimize()
     new HighlyCompressedMapStatus(loc, numNonEmptyBlocks, emptyBlocks, avgSize,
-      hugeBlockSizes, mapTaskId)
+      hugeBlockSizes, mapTaskId, metadata)
   }
 }

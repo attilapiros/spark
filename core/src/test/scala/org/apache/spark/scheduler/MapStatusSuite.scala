@@ -17,22 +17,46 @@
 
 package org.apache.spark.scheduler
 
-import java.io.{ByteArrayInputStream, ByteArrayOutputStream, ObjectInputStream, ObjectOutputStream}
+import java.io.{ByteArrayInputStream, ByteArrayOutputStream, ObjectInput, ObjectInputStream, ObjectOutput, ObjectOutputStream}
 
 import scala.util.Random
 
-import org.mockito.Mockito.mock
+import org.mockito.Mockito.{mock, when}
 import org.roaringbitmap.RoaringBitmap
 
 import org.apache.spark.{SparkConf, SparkContext, SparkEnv, SparkFunSuite}
 import org.apache.spark.LocalSparkContext._
 import org.apache.spark.internal.config
 import org.apache.spark.serializer.{JavaSerializer, KryoSerializer}
+import org.apache.spark.shuffle.ShuffleManager
+import org.apache.spark.shuffle.api.metadata.{MapOutputMetadata, MapOutputMetadataExternalizer}
 import org.apache.spark.storage.BlockManagerId
 import org.apache.spark.util.Utils
 
 class MapStatusSuite extends SparkFunSuite {
-  private def doReturn(value: Any) = org.mockito.Mockito.doReturn(value, Seq.empty: _*)
+  case class CustomMapOutputMetadata(i: Int, l: Long, s: String) extends MapOutputMetadata
+
+  private var conf: SparkConf = _
+
+  private val shuffleManager = mock(classOf[ShuffleManager])
+
+  // no metadata stored by default
+  private val metadataExternalizer = new MapOutputMetadataExternalizer {
+    override def writeExternal(mapOutputMetadata: MapOutputMetadata, out: ObjectOutput): Unit = {
+    }
+
+    override def readExternal(in: ObjectInput): MapOutputMetadata = null
+  }
+
+  override def beforeEach(): Unit = {
+    super.beforeEach()
+    val env = mock(classOf[SparkEnv])
+    SparkEnv.set(env)
+    when(env.shuffleManager).thenReturn(shuffleManager)
+    when(shuffleManager.mapOutputMetadataExternalizer).thenReturn(metadataExternalizer)
+    conf = new SparkConf
+    when(env.conf).thenReturn(conf)
+  }
 
   test("compressSize") {
     assert(MapStatus.compressSize(0L) === 0)
@@ -104,10 +128,7 @@ class MapStatusSuite extends SparkFunSuite {
 
   test("SPARK-22540: ensure HighlyCompressedMapStatus calculates correct avgSize") {
     val threshold = 1000
-    val conf = new SparkConf().set(config.SHUFFLE_ACCURATE_BLOCK_THRESHOLD.key, threshold.toString)
-    val env = mock(classOf[SparkEnv])
-    doReturn(conf).when(env).conf
-    SparkEnv.set(env)
+    conf.set(config.SHUFFLE_ACCURATE_BLOCK_THRESHOLD.key, threshold.toString)
     val sizes = (0L to 3000L).toArray
     val smallBlockSizes = sizes.filter(n => n > 0 && n < threshold)
     val avg = smallBlockSizes.sum / smallBlockSizes.length
@@ -122,6 +143,52 @@ class MapStatusSuite extends SparkFunSuite {
         assert(estimate === avg)
       }
     }
+  }
+
+  private def mapStatusWithMetadata(sizes: Array[Long]): MapStatus = {
+    val loc = BlockManagerId("a", "b", 10)
+    val status = MapStatus(loc, sizes, 5, CustomMapOutputMetadata(42, 7L, "foo"))
+    when(shuffleManager.mapOutputMetadataExternalizer).thenReturn(
+      new MapOutputMetadataExternalizer {
+        override def writeExternal(metadata: MapOutputMetadata, out: ObjectOutput): Unit =
+          metadata match {
+            case CustomMapOutputMetadata(i, l, s) =>
+              out.writeInt(i)
+              out.writeLong(l)
+              out.writeUTF(s)
+            case _ =>
+          }
+
+        override def readExternal(in: ObjectInput): CustomMapOutputMetadata = {
+          val i = in.readInt()
+          val l = in.readLong()
+          val s = in.readUTF()
+          CustomMapOutputMetadata(i, l, s)
+        }
+      })
+    val status1 = compressAndDecompressMapStatus(status)
+    assert(status1.location == loc)
+    status1
+  }
+
+  private def checkMapOutputMetadata(status: MapStatus): Unit = {
+    assert(status.metadata.isInstanceOf[CustomMapOutputMetadata])
+    val customMetadata = status.metadata.asInstanceOf[CustomMapOutputMetadata]
+    assert(customMetadata.i == 42)
+    assert(customMetadata.l == 7L)
+    assert(customMetadata.s == "foo")
+  }
+
+  test("check custom MapOutputMetadata serialization/deserialization (highly compressed)") {
+    val mapStatus = mapStatusWithMetadata(Array.fill[Long](2001)(150L))
+    assert(mapStatus.isInstanceOf[HighlyCompressedMapStatus])
+    checkMapOutputMetadata(mapStatus)
+  }
+
+  test("check custom MapOutputMetadata serialization/deserialization (compressed)") {
+    val mapStatus = mapStatusWithMetadata((1L to 1000L).toArray)
+    assert(mapStatus.isInstanceOf[CompressedMapStatus])
+    checkMapOutputMetadata(mapStatus)
   }
 
   def compressAndDecompressMapStatus(status: MapStatus): MapStatus = {
@@ -162,10 +229,7 @@ class MapStatusSuite extends SparkFunSuite {
 
   test("Blocks which are bigger than SHUFFLE_ACCURATE_BLOCK_THRESHOLD should not be " +
     "underestimated.") {
-    val conf = new SparkConf().set(config.SHUFFLE_ACCURATE_BLOCK_THRESHOLD.key, "1000")
-    val env = mock(classOf[SparkEnv])
-    doReturn(conf).when(env).conf
-    SparkEnv.set(env)
+    conf.set(config.SHUFFLE_ACCURATE_BLOCK_THRESHOLD.key, "1000")
     // Value of element in sizes is equal to the corresponding index.
     val sizes = (0L to 2000L).toArray
     val status1 = MapStatus(BlockManagerId("exec-0", "host-0", 100), sizes, 5)

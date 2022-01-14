@@ -231,7 +231,7 @@ public class UnsafeShuffleWriter<K, V> extends ShuffleWriter<K, V> {
       }
     }
     mapStatus = MapStatus$.MODULE$.apply(
-      blockManager.shuffleServerId(), partitionLengths, mapId);
+      blockManager.shuffleServerId(), partitionLengths, mapId, null);
   }
 
   @VisibleForTesting

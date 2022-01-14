@@ -18,6 +18,7 @@
 package org.apache.spark.shuffle
 
 import org.apache.spark.{ShuffleDependency, TaskContext}
+import org.apache.spark.shuffle.api.metadata.MapOutputMetadataExternalizer
 
 /**
  * Pluggable interface for shuffle systems. A ShuffleManager is created in SparkEnv on the driver
@@ -90,6 +91,8 @@ private[spark] trait ShuffleManager {
    * Return a resolver capable of retrieving shuffle block data based on block coordinates.
    */
   def shuffleBlockResolver: ShuffleBlockResolver
+
+  val mapOutputMetadataExternalizer: MapOutputMetadataExternalizer
 
   /** Shut down this ShuffleManager. */
   def stop(): Unit

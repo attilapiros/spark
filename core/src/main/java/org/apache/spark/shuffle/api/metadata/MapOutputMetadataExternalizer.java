@@ -14,20 +14,15 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.spark.shuffle.api.metadata;
 
-import org.apache.spark.annotation.DeveloperApi;
+import java.io.IOException;
+import java.io.ObjectInput;
+import java.io.ObjectOutput;
 
-import java.io.Serializable;
+public interface MapOutputMetadataExternalizer {
 
-/**
- * :: DeveloperApi ::
- * Metadata for registering the result of committing the output of a shuffle map task.
- * <p>
- * All implementations must be serializable since this is sent from the executors to
- * the driver.
- */
-@DeveloperApi
-public interface MapOutputMetadata extends Serializable {}
+    void writeExternal(MapOutputMetadata mapOutputMetadata, ObjectOutput out) throws IOException;
 
+    MapOutputMetadata readExternal(ObjectInput in) throws IOException, ClassNotFoundException;
+}
