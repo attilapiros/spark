@@ -17,7 +17,6 @@
 
 package org.apache.spark.shuffle.sort
 
-import java.io.{ObjectInput, ObjectOutput}
 import java.util.concurrent.ConcurrentHashMap
 
 import scala.collection.JavaConverters._
@@ -26,7 +25,7 @@ import org.apache.spark._
 import org.apache.spark.internal.Logging
 import org.apache.spark.shuffle._
 import org.apache.spark.shuffle.api.ShuffleExecutorComponents
-import org.apache.spark.shuffle.api.metadata.{MapOutputMetadata, MapOutputMetadataExternalizer}
+import org.apache.spark.shuffle.api.metadata.{MapOutputMetadata, MapOutputMetadataFactory}
 import org.apache.spark.util.collection.OpenHashSet
 
 /**
@@ -197,12 +196,9 @@ private[spark] class SortShuffleManager(conf: SparkConf) extends ShuffleManager 
     shuffleBlockResolver.stop()
   }
 
-  override val mapOutputMetadataExternalizer: MapOutputMetadataExternalizer = {
-    new MapOutputMetadataExternalizer {
-      override def writeExternal(mapOutputMetadata: MapOutputMetadata, out: ObjectOutput): Unit = {
-      }
-
-      override def readExternal(in: ObjectInput): MapOutputMetadata = null
+  override val mapOutputMetadataFactory: MapOutputMetadataFactory = {
+    new MapOutputMetadataFactory {
+      override def create(): MapOutputMetadata = null
     }
   }
 }

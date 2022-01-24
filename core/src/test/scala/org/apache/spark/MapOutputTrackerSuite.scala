@@ -17,8 +17,6 @@
 
 package org.apache.spark
 
-import java.io.{ObjectInput, ObjectOutput}
-
 import scala.collection.mutable.ArrayBuffer
 
 import org.mockito.ArgumentMatchers.any
@@ -33,18 +31,15 @@ import org.apache.spark.internal.config.Tests.IS_TESTING
 import org.apache.spark.rpc.{RpcAddress, RpcCallContext, RpcEnv}
 import org.apache.spark.scheduler.{CompressedMapStatus, HighlyCompressedMapStatus, MapStatus, MergeStatus}
 import org.apache.spark.shuffle.{FetchFailedException, ShuffleManager}
-import org.apache.spark.shuffle.api.metadata.{MapOutputMetadata, MapOutputMetadataExternalizer}
+import org.apache.spark.shuffle.api.metadata.{MapOutputMetadata, MapOutputMetadataFactory}
 import org.apache.spark.storage.{BlockManagerId, ShuffleBlockId, ShuffleMergedBlockId}
 
 
 class MapOutputTrackerSuite extends SparkFunSuite with LocalSparkContext {
   private val conf = new SparkConf
 
-  private val metadataExternalizer = new MapOutputMetadataExternalizer {
-    override def writeExternal(mapOutputMetadata: MapOutputMetadata, out: ObjectOutput): Unit = {
-    }
-
-    override def readExternal(in: ObjectInput): MapOutputMetadata = null
+  private val metadataFactory = new MapOutputMetadataFactory {
+    override def create(): MapOutputMetadata = null
   }
 
   override def beforeEach(): Unit = {
@@ -53,7 +48,7 @@ class MapOutputTrackerSuite extends SparkFunSuite with LocalSparkContext {
     SparkEnv.set(env)
     val shuffleManager = mock(classOf[ShuffleManager])
     when(env.shuffleManager).thenReturn(shuffleManager)
-    when(shuffleManager.mapOutputMetadataExternalizer).thenReturn(metadataExternalizer)
+    when(shuffleManager.mapOutputMetadataFactory).thenReturn(metadataFactory)
     when(env.conf).thenReturn(conf)
   }
 

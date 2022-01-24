@@ -19,15 +19,15 @@ package org.apache.spark.shuffle.api.metadata;
 
 import org.apache.spark.annotation.DeveloperApi;
 
-import java.io.Serializable;
+import java.io.Externalizable;
 
 /**
  * :: DeveloperApi ::
  * Metadata for registering the result of committing the output of a shuffle map task.
  * <p>
- * All implementations must be serializable since this is sent from the executors to
+ * All implementations must be externalizable since this is sent from the executors to
  * the driver.
  */
 @DeveloperApi
-public interface MapOutputMetadata extends Serializable {}
+public interface MapOutputMetadata extends Externalizable {}
 

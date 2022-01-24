@@ -18,7 +18,7 @@
 package org.apache.spark.shuffle
 
 import org.apache.spark.{ShuffleDependency, TaskContext}
-import org.apache.spark.shuffle.api.metadata.MapOutputMetadataExternalizer
+import org.apache.spark.shuffle.api.metadata.MapOutputMetadataFactory
 
 /**
  * Pluggable interface for shuffle systems. A ShuffleManager is created in SparkEnv on the driver
@@ -92,7 +92,7 @@ private[spark] trait ShuffleManager {
    */
   def shuffleBlockResolver: ShuffleBlockResolver
 
-  val mapOutputMetadataExternalizer: MapOutputMetadataExternalizer
+  val mapOutputMetadataFactory: MapOutputMetadataFactory
 
   /** Shut down this ShuffleManager. */
   def stop(): Unit

@@ -162,7 +162,7 @@ private[spark] class CompressedMapStatus(
     out.write(compressedSizes)
     out.writeLong(_mapTaskId)
     if (_metadata != null) {
-      SparkEnv.get.shuffleManager.mapOutputMetadataExternalizer.writeExternal(_metadata, out)
+      _metadata.writeExternal(out)
     }
   }
 
@@ -172,7 +172,10 @@ private[spark] class CompressedMapStatus(
     compressedSizes = new Array[Byte](len)
     in.readFully(compressedSizes)
     _mapTaskId = in.readLong()
-    _metadata = SparkEnv.get.shuffleManager.mapOutputMetadataExternalizer.readExternal(in)
+    _metadata = SparkEnv.get.shuffleManager.mapOutputMetadataFactory.create()
+    if (_metadata != null) {
+      _metadata.readExternal(in)
+    }
   }
 }
 
@@ -239,7 +242,7 @@ private[spark] class HighlyCompressedMapStatus private (
     }
     out.writeLong(_mapTaskId)
     if (_metadata != null) {
-      SparkEnv.get.shuffleManager.mapOutputMetadataExternalizer.writeExternal(_metadata, out)
+      _metadata.writeExternal(out)
     }
   }
 
@@ -258,7 +261,10 @@ private[spark] class HighlyCompressedMapStatus private (
     }
     hugeBlockSizes = hugeBlockSizesImpl
     _mapTaskId = in.readLong()
-    _metadata = SparkEnv.get.shuffleManager.mapOutputMetadataExternalizer.readExternal(in)
+    _metadata = SparkEnv.get.shuffleManager.mapOutputMetadataFactory.create()
+    if (_metadata != null) {
+      _metadata.readExternal(in)
+    }
   }
 }
 

@@ -16,13 +16,6 @@
  */
 package org.apache.spark.shuffle.api.metadata;
 
-import java.io.IOException;
-import java.io.ObjectInput;
-import java.io.ObjectOutput;
-
-public interface MapOutputMetadataExternalizer {
-
-    void writeExternal(MapOutputMetadata mapOutputMetadata, ObjectOutput out) throws IOException;
-
-    MapOutputMetadata readExternal(ObjectInput in) throws IOException, ClassNotFoundException;
+public interface MapOutputMetadataFactory {
+  MapOutputMetadata create();
 }
