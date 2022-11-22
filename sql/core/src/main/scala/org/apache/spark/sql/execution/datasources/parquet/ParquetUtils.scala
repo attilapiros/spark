@@ -465,6 +465,10 @@ object ParquetUtils extends Logging {
       SQLConf.PARQUET_TIMESTAMP_NTZ_ENABLED.key,
       sqlConf.parquetTimestampNTZEnabled.toString)
 
+    conf.set(
+      SQLConf.LEGACY_PARQUET_NANOS_AS_LONG.key,
+      sqlConf.legacyParquetNanosAsLong.toString)
+
     // Sets compression scheme
     conf.set(ParquetOutputFormat.COMPRESSION, parquetOptions.compressionCodecClassName)
 

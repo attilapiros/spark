@@ -3667,6 +3667,13 @@ object SQLConf {
       .booleanConf
       .createWithDefault(false)
 
+  val LEGACY_PARQUET_NANOS_AS_LONG = buildConf("spark.sql.legacy.parquet.nanosAsLong")
+    .internal()
+    .doc("When true, the Parquet's nanos precision timestamps are converted to SQL long values.")
+    .version("3.2.3")
+    .booleanConf
+    .createWithDefault(false)
+
   val PARQUET_INT96_REBASE_MODE_IN_WRITE =
     buildConf("spark.sql.parquet.int96RebaseModeInWrite")
       .internal()
@@ -4805,6 +4812,8 @@ class SQLConf extends Serializable with Logging {
   def parquetFieldIdWriteEnabled: Boolean = getConf(SQLConf.PARQUET_FIELD_ID_WRITE_ENABLED)
 
   def ignoreMissingParquetFieldId: Boolean = getConf(SQLConf.IGNORE_MISSING_PARQUET_FIELD_ID)
+
+  def legacyParquetNanosAsLong: Boolean = getConf(SQLConf.LEGACY_PARQUET_NANOS_AS_LONG)
 
   def parquetTimestampNTZEnabled: Boolean = getConf(PARQUET_TIMESTAMP_NTZ_ENABLED)
 
