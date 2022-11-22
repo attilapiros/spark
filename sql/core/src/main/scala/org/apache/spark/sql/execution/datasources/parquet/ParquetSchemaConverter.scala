@@ -49,7 +49,7 @@ import org.apache.spark.sql.types._
  * @param caseSensitive Whether use case sensitive analysis when comparing Spark catalyst read
  *                      schema with Parquet schema.
  * @param timestampNTZEnabled Whether TimestampNTZType type is enabled.
- * @param parquetNanosAsLong Whether timestamps with nanos are converted to long.
+ * @param nanosAsLong Whether timestamps with nanos are converted to long.
  */
 class ParquetToSparkSchemaConverter(
     assumeBinaryIsString: Boolean = SQLConf.PARQUET_BINARY_AS_STRING.defaultValue.get,
@@ -280,7 +280,7 @@ class ParquetToSparkSchemaConverter(
           case timestamp: TimestampLogicalTypeAnnotation
             if timestamp.getUnit == TimeUnit.NANOS && nanosAsLong =>
             LongType
-          case _ => throw new org.apache.spark.SparkException(s"nanosAsLong: $nanosAsLong")
+          case _ => illegalType()
         }
 
       case INT96 =>
