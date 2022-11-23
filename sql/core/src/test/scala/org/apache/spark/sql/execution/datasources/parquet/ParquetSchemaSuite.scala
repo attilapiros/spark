@@ -1048,7 +1048,7 @@ class ParquetSchemaSuite extends ParquetSchemaTest {
     }
   }
 
-  test("SPARK-40819: ability to read parquet file with TIMESTAMP(NANOS, true)") {
+  test("SPARK-40819: parquet file with TIMESTAMP(NANOS, true) (with nanosAsLong=true)") {
     val tsAttribute = "birthday"
     withSQLConf(SQLConf.LEGACY_PARQUET_NANOS_AS_LONG.key -> "true") {
       val testDataPath = testFile("test-data/timestamp-nanos.parquet")
@@ -1056,6 +1056,14 @@ class ParquetSchemaSuite extends ParquetSchemaTest {
       assert(data.schema.fields.head.dataType == LongType)
       assert(data.orderBy(desc(tsAttribute)).take(1).head.getAs[Long](0) == 1668537129123534758L)
     }
+  }
+
+  test("SPARK-40819: parquet file with TIMESTAMP(NANOS, true) (with default nanosAsLong=false)") {
+    val testDataPath = testFile("test-data/timestamp-nanos.parquet")
+    val e = intercept[org.apache.spark.SparkException] {
+      spark.read.parquet(testDataPath).collect()
+    }
+    assert(e.getMessage.contains("Illegal Parquet type: INT64 (TIMESTAMP(NANOS,true))."))
   }
 
   // =======================================================
