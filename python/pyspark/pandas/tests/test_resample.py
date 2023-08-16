@@ -34,6 +34,24 @@ from pyspark.testing.pandasutils import PandasOnSparkTestCase, TestUtils
 
 
 class ResampleTestsMixin:
+
+    timezone = None
+
+
+    @classmethod
+    def setUpClass(cls):
+        tz_string = datetime.datetime.now(datetime.timezone.utc).astimezone().tzname()
+        print("timezone:", tz_string)
+        cls.timezone = os.environ.get("TZ")
+        os.environ["TZ"] = 'America/New_York'
+
+
+    @classmethod
+    def tearDownClass(cls):
+        if cls.timezone:
+            os.environ["TZ"] = cls.timezone
+
+
     @property
     def pdf1(self):
         np.random.seed(11)
