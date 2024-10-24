@@ -158,6 +158,7 @@ public class JavaUtils {
     ProcessBuilder builder = new ProcessBuilder("rm", "-rf", file.getAbsolutePath());
     Process process = null;
     int exitCode = -1;
+    logger.error("Attila: deleteRecursivelyUsingUnixNative: " + file.getName());
 
     try {
       // In order to avoid deadlocks, consume the stdout (and stderr) of the process
