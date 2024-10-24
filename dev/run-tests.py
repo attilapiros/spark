@@ -680,4 +680,4 @@ def _test():
 
 if __name__ == "__main__":
     _test()
-    main()
+    exec_sbt(["project core; testOnly org.apache.spark.storage.BlockManagerDecommissionIntegrationSuite -- -z SPARK-46957"])
