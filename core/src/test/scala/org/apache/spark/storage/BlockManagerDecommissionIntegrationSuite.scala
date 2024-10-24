@@ -359,7 +359,7 @@ class BlockManagerDecommissionIntegrationSuite extends SparkFunSuite with LocalS
   test("SPARK-46957: Migrated shuffle files should be able to cleanup from executor") {
 
     val sparkTempDir = System.getProperty("java.io.tmpdir")
-
+    logError(s"Attila sparkTempDir: $sparkTempDir")
     def shuffleFiles: Seq[File] = {
       FileUtils
         .listFiles(new File(sparkTempDir), Array("data", "index"), true)
@@ -382,12 +382,14 @@ class BlockManagerDecommissionIntegrationSuite extends SparkFunSuite with LocalS
     val execToDecommission = sc.getExecutorIds().head
     sc.addSparkListener(new SparkListener {
       override def onBlockUpdated(blockUpdated: SparkListenerBlockUpdated): Unit = {
+        logError(s"Attila onBlockUpdated: ${Thread.currentThread().getId()}")
         if (blockUpdated.blockUpdatedInfo.blockId.isShuffle) {
           shuffleBlockUpdates += blockUpdated.blockUpdatedInfo.blockId
         }
       }
 
       override def onExecutorRemoved(executorRemoved: SparkListenerExecutorRemoved): Unit = {
+        logError(s"Attila onExecutorRemoved: ${Thread.currentThread().getId()}")
         assert(execToDecommission === executorRemoved.executorId)
         isDecommissionedExecutorRemoved = true
       }
@@ -425,6 +427,7 @@ class BlockManagerDecommissionIntegrationSuite extends SparkFunSuite with LocalS
     // Remove the shuffle data
     sc.shuffleDriverComponents.removeShuffle(shuffleId, true)
 
+    logError(s"Attila test body: ${Thread.currentThread().getId()}")
     eventually(timeout(1.minute), interval(10.milliseconds)) {
       assert(newShuffleFiles.intersect(shuffleFiles).isEmpty)
     }
