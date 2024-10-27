@@ -1044,6 +1044,7 @@ private[spark] object Utils
    * Throws an exception if deletion is unsuccessful.
    */
   override def deleteRecursively(file: File): Unit = {
+    logInfo(s"Attila deleteRecursively: $file")
     super.deleteRecursively(file)
     if (file != null) {
       ShutdownHookManager.removeShutdownDeleteDir(file)
