@@ -379,18 +379,19 @@ class BlockManagerDecommissionIntegrationSuite extends SparkFunSuite with LocalS
       .set(config.STORAGE_DECOMMISSION_SHUFFLE_BLOCKS_ENABLED, true)
     sc = new SparkContext(conf)
     TestUtils.waitUntilExecutorsUp(sc, 2, 60000)
-    val shuffleBlockUpdates = new ArrayBuffer[BlockId]()
-    var isDecommissionedExecutorRemoved = false
+    val shuffleBlockUpdates = new ConcurrentLinkedQueue[BlockId]()
+    @volatile var isDecommissionedExecutorRemoved = false
     val execToDecommission = sc.getExecutorIds().head
     sc.addSparkListener(new SparkListener {
       override def onBlockUpdated(blockUpdated: SparkListenerBlockUpdated): Unit = {
         if (blockUpdated.blockUpdatedInfo.blockId.isShuffle) {
-          shuffleBlockUpdates += blockUpdated.blockUpdatedInfo.blockId
+          shuffleBlockUpdates.add(blockUpdated.blockUpdatedInfo.blockId)
         }
       }
 
       override def onExecutorRemoved(executorRemoved: SparkListenerExecutorRemoved): Unit = {
         assert(execToDecommission === executorRemoved.executorId)
+        logInfo(s"Attila: onExecutorRemoved")
         isDecommissionedExecutorRemoved = true
       }
     })
@@ -417,6 +418,7 @@ class BlockManagerDecommissionIntegrationSuite extends SparkFunSuite with LocalS
     }
 
     val shuffleId = shuffleBlockUpdates
+      .asScala
       .find(_.isInstanceOf[ShuffleIndexBlockId])
       .map(_.asInstanceOf[ShuffleIndexBlockId].shuffleId)
       .get
