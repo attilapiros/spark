@@ -1554,6 +1554,11 @@ private[spark] class DAGScheduler(
       case sms: ShuffleMapStage if stage.isIndeterminate && !sms.isAvailable =>
         mapOutputTracker.unregisterAllMapAndMergeOutput(sms.shuffleDep.shuffleId)
         sms.shuffleDep.newShuffleMergeState()
+      case rs: ResultStage if stage.isIndeterminate &&
+        stage.findMissingPartitions().length != rs.partitions.length =>
+        abortStage(stage, "An indeterminate result stage cannot be reverted", None)
+        runningStages -= stage
+        return
       case _ =>
     }
 
@@ -1939,49 +1944,54 @@ private[spark] class DAGScheduler(
           case rt: ResultTask[_, _] =>
             // Cast to ResultStage here because it's part of the ResultTask
             // TODO Refactor this out to a function that accepts a ResultStage
-            val resultStage = stage.asInstanceOf[ResultStage]
-            resultStage.activeJob match {
-              case Some(job) =>
-                if (!job.finished(rt.outputId)) {
-                  job.finished(rt.outputId) = true
-                  job.numFinished += 1
-                  // If the whole job has finished, remove it
-                  if (job.numFinished == job.numPartitions) {
-                    markStageAsFinished(resultStage)
-                    cancelRunningIndependentStages(job, s"Job ${job.jobId} is finished.")
-                    cleanupStateForJobAndIndependentStages(job)
-                    try {
-                      // killAllTaskAttempts will fail if a SchedulerBackend does not implement
-                      // killTask.
-                      logInfo(log"Job ${MDC(JOB_ID, job.jobId)} is finished. Cancelling " +
-                        log"potential speculative or zombie tasks for this job")
-                      // ResultStage is only used by this job. It's safe to kill speculative or
-                      // zombie tasks in this stage.
-                      taskScheduler.killAllTaskAttempts(
-                        stageId,
-                        shouldInterruptTaskThread(job),
-                        reason = "Stage finished")
-                    } catch {
-                      case e: UnsupportedOperationException =>
-                        logWarning(log"Could not cancel tasks " +
-                          log"for stage ${MDC(STAGE, stageId)}", e)
+            if (failedStages.contains(stage) && stage.isIndeterminate) {
+              logInfo(log"Ignoring result from ${MDC(RESULT, rt)} because " +
+                log"this indeterminate stage failed earlier")
+            } else {
+              val resultStage = stage.asInstanceOf[ResultStage]
+              resultStage.activeJob match {
+                case Some(job) =>
+                  if (!job.finished(rt.outputId)) {
+                    job.finished(rt.outputId) = true
+                    job.numFinished += 1
+                    // If the whole job has finished, remove it
+                    if (job.numFinished == job.numPartitions) {
+                      markStageAsFinished(resultStage)
+                      cancelRunningIndependentStages(job, s"Job ${job.jobId} is finished.")
+                      cleanupStateForJobAndIndependentStages(job)
+                      try {
+                        // killAllTaskAttempts will fail if a SchedulerBackend does not implement
+                        // killTask.
+                        logInfo(log"Job ${MDC(JOB_ID, job.jobId)} is finished. Cancelling " +
+                          log"potential speculative or zombie tasks for this job")
+                        // ResultStage is only used by this job. It's safe to kill speculative or
+                        // zombie tasks in this stage.
+                        taskScheduler.killAllTaskAttempts(
+                          stageId,
+                          shouldInterruptTaskThread(job),
+                          reason = "Stage finished")
+                      } catch {
+                        case e: UnsupportedOperationException =>
+                          logWarning(log"Could not cancel tasks " +
+                            log"for stage ${MDC(STAGE, stageId)}", e)
+                      }
+                      listenerBus.post(
+                        SparkListenerJobEnd(job.jobId, clock.getTimeMillis(), JobSucceeded))
                     }
-                    listenerBus.post(
-                      SparkListenerJobEnd(job.jobId, clock.getTimeMillis(), JobSucceeded))
-                  }
 
-                  // taskSucceeded runs some user code that might throw an exception. Make sure
-                  // we are resilient against that.
-                  try {
-                    job.listener.taskSucceeded(rt.outputId, event.result)
-                  } catch {
-                    case e: Throwable if !Utils.isFatalError(e) =>
-                      // TODO: Perhaps we want to mark the resultStage as failed?
-                      job.listener.jobFailed(new SparkDriverExecutionException(e))
+                    // taskSucceeded runs some user code that might throw an exception. Make sure
+                    // we are resilient against that.
+                    try {
+                      job.listener.taskSucceeded(rt.outputId, event.result)
+                    } catch {
+                      case e: Throwable if !Utils.isFatalError(e) =>
+                        // TODO: Perhaps we want to mark the resultStage as failed?
+                        job.listener.jobFailed(new SparkDriverExecutionException(e))
+                    }
                   }
-                }
-              case None =>
-                logInfo(log"Ignoring result from ${MDC(RESULT, rt)} because its job has finished")
+                case None =>
+                  logInfo(log"Ignoring result from ${MDC(RESULT, rt)} because its job has finished")
+              }
             }
 
           case smt: ShuffleMapTask =>
