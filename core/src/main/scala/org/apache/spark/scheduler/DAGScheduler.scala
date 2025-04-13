@@ -1554,6 +1554,12 @@ private[spark] class DAGScheduler(
       case sms: ShuffleMapStage if stage.isIndeterminate && !sms.isAvailable =>
         mapOutputTracker.unregisterAllMapAndMergeOutput(sms.shuffleDep.shuffleId)
         sms.shuffleDep.newShuffleMergeState()
+      case rs: ResultStage if rs.isIndeterminate &&
+        rs.findMissingPartitions().length != rs.partitions.length =>
+        abortStage(rs, "Re-submit of an indeterminate result stage with any finished " +
+          "partition is not supported", None)
+        runningStages -= stage
+        return
       case _ =>
     }
 
@@ -1979,6 +1985,15 @@ private[spark] class DAGScheduler(
                       // TODO: Perhaps we want to mark the resultStage as failed?
                       job.listener.jobFailed(new SparkDriverExecutionException(e))
                   }
+                } else if (resultStage.isIndeterminate) {
+                  // A task of an indeterminate resultStage cannot be re-executed as
+                  // depending on the job:
+                  // - it might already committed its result and there is no gurantess
+                  //   for the recommit
+                  // - it might write to an external DB by executing "insert into" in case of
+                  //   JDBC output
+                  val reason = "Re-execution of an indeterminate result task is not supported."
+                  abortStage(resultStage, reason, None)
                 }
               case None =>
                 logInfo(log"Ignoring result from ${MDC(RESULT, rt)} because its job has finished")
